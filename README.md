@@ -4,18 +4,19 @@ A personal study planner for the UKMPPD CBT, running from 1 Dec 2026 to the exam
 It's a plain HTML/CSS/JS app with no build step, hosted on GitHub Pages. Your logs are stored in Supabase so your phone and laptop stay in sync, and it keeps working offline.
 
 ## What the plan does
+| Period | What happens |
+|---|---|
+| Dec 1–24 (after 15:00, 3–5 h) | One lecture part per weekday (Medsense rewatch). Saturday = practice questions + error log for the subjects finished that week. Sunday light. |
+| Dec 25 | Practice day for Pulmo, Rheum and Surgery |
+| Dec 28 – Jan 4 | Full lecture days for the Maintain subjects: lecture → 60–80 Q → error log → Anki |
+| Jan 5–16 | Review days, two subjects each: rewatch only flagged concepts (max ~1 h each) → 50–60 Q each → error log. Priority twice, Strengthen once, 3 slots for your weakest |
+| Saturdays Dec 26, Jan 2, Jan 9 | Full TO + review |
+| Jan 18 → taper | Practice only: TO days + drill days (two subjects each). Ramadan: TO every other day, about 6 h |
+| Final 7 days | Taper: Priority subjects → mixed → exam eve → exam |
 
-| Period | Days | What happens |
-|---|---|---|
-| Dec 1–24 (after 15:00) | 18 material days, 3 TOs, 3 light Sundays | First pass through all 18 subjects |
-| Dec 25 – Jan 17 (full days) | 17 material days, 3 TOs, 4 light Sundays | Second pass: Tier A twice, Tier B once. Material study ends Jan 17 |
-| Jan 18 – Feb 7 | 5 TOs + 1 drill day per week | Practice only: TO, review, drills, Anki |
-| Ramadan (from Feb 8, 6 h) | TO every other day, drill days in between | Blocks moved around sahur and iftar |
-| Final 7 days | Taper | Tier A repair → mixed → exam eve → exam |
+Days are checklists of steps with rough durations, not clock times. Unfinished lectures, sets and TOs appear under **Carried over** until you tick or drop them.
 
-- Sundays are always light half days.
-- There are no TOs in the last 48 hours before the exam.
-- If you change the exam date in Settings, the whole plan rebuilds and the taper moves with it.
+**Tiers** (Settings → Subject tiers): Priority, Strengthen, Maintain. They decide review and drill slots. The app suggests moves from your scores (below 70% → Priority, 85%+ twice → Maintain); nothing changes until you accept.
 
 ## Setup: about 20 minutes, one time only
 
@@ -68,19 +69,20 @@ In **Authentication → URL Configuration**, set **Site URL** to your GitHub Pag
 5. Finally, go to **Settings → Reset logs** to clear the test data.
 
 ## Daily use (under 1 minute of logging)
-- **Blocks:** tap the circle when you finish a block. Each block counts as one hour.
-- **Questions:** after each set, enter the number of questions and how many you got right, then tap **Add**. Choosing a source is optional.
-- **Anki:** enter the number of cards you did. Only fill in backlog if there is one.
+- **Steps:** tick each step when it's done. Saving a practice set or TO score ticks its step for you.
+- **Practice:** enter questions and correct, pick the subject, then **Save**. There's an optional timer on practice and TO steps.
+- **Anki:** enter cards done. Only fill in backlog if there is one.
 - **Energy:** tap 1 to 5.
-- **Error log:** write one line per miss: the rule that would have got it right.
+- **Error log:** one line per miss. Tap **Rewatch** on concepts you still don't get; they appear on that subject's next review day.
+- **Sundays:** read the weekly recap and pick next week's repair targets.
 
 ## Suggestions (you decide)
 The app checks your numbers and suggests changes. Nothing changes until you tap **Accept**.
 
 | Rule | Suggestion |
 |---|---|
-| Subject below 70% over its last sets | Add a repair session on the next drill or full material day |
-| Subject 85%+ on two separate sets | Move it to maintenance and free its drill slots |
+| Subject below 70% over its last sets | Move it to Priority (more review and drill slots) |
+| Subject 85%+ on two separate days | Move it to Maintain |
 | Energy 2 or lower for 3 days | Cut question targets by about 40% for 48 hours |
 | Last week's blocks below 80% | Lower this week's targets by about 13% |
 | Anki backlog | New cards to 0 until it clears |
