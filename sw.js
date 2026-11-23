@@ -1,6 +1,6 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump VERSION whenever you change files so phones pick up the update.
-const VERSION = 'ukmppd-v3';
+const VERSION = 'ukmppd-v5';
 const SHELL = [
   './', './index.html', './css/styles.css', './js/app.js', './js/schedule.js', './js/stats.js', './js/store.js', './js/config.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',

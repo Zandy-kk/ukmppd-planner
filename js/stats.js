@@ -161,3 +161,52 @@ export function suggestions(plan, logs, settings, today, materialize) {
   }
   return out;
 }
+
+// ---------- daily recall (spaced retrieval over your own error log) ----------
+const GAPS = [1, 3, 7, 14, 30];
+export function recallCue(note) {
+  const m = String(note || '').match(/^(.{3,80}?)\s*(?::|→|->|=|—|–)\s*(.+)$/);
+  if (m) return { cue: m[1].trim(), answer: m[2].trim() };
+  const w = String(note || '').split(/\s+/);
+  return { cue: w.slice(0, Math.min(4, Math.ceil(w.length / 3))).join(' ') + ' …', answer: note };
+}
+export function recallDue(errors, today) {
+  return errors.filter((e) => !e.closed && e.note && (!e.rc || !e.rc.next || e.rc.next <= today))
+    .sort((a, b) => ((a.rc && a.rc.next) || '').localeCompare((b.rc && b.rc.next) || '') || (a.date || '').localeCompare(b.date || ''));
+}
+export function recallNext(rc, ok, today) {
+  const streak = ok ? ((rc && rc.streak) || 0) + 1 : 0;
+  const gap = ok ? GAPS[Math.min(streak - 1, GAPS.length - 1)] : 1;
+  return { streak, last: today, next: addDays(today, gap), seen: ((rc && rc.seen) || 0) + 1 };
+}
+
+// ---------- heatmap + streak ----------
+export function dayScore(day, log) {
+  const req = required(day);
+  if (!req.length) return null;
+  return req.filter((s) => isDone(log, s.key)).length / req.length;
+}
+export function heatmap(plan, logs, today, materialize) {
+  return plan.map((pd) => {
+    const log = logs[pd.date] || {}; const d = materialize(pd, log);
+    const sc = dayScore(d, log);
+    const h = hoursDone(d, log);
+    const lvl = pd.date > today ? -1 : sc === null ? 0 : sc === 0 ? 0 : sc < 0.34 ? 1 : sc < 0.67 ? 2 : sc < 0.99 ? 3 : 4;
+    return { date: pd.date, type: d.type, score: sc, hours: h, lvl };
+  });
+}
+// A day counts toward the streak when at least 80% of its steps are done.
+export function streaks(cells, today) {
+  const ok = (c) => c.score !== null && c.score >= 0.8;
+  let best = 0, run = 0;
+  cells.filter((c) => c.date <= today).forEach((c) => { if (ok(c)) { run++; best = Math.max(best, run); } else if (c.date < today) run = 0; });
+  // current: count back from today (today may still be in progress)
+  let cur = 0;
+  const past = cells.filter((c) => c.date <= today).reverse();
+  for (let i = 0; i < past.length; i++) {
+    if (ok(past[i])) cur++;
+    else if (i === 0 && past[i].date === today) continue;
+    else break;
+  }
+  return { current: cur, best: Math.max(best, cur) };
+}

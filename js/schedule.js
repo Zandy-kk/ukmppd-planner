@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS = {
   fullTimeStart: '2026-12-25',
   materialEnd: '2027-01-17',
   examDate: '2027-02-28',
+  examTime: '08:00',
   ramadanStart: '2027-02-08',
   ramadanEnd: '2027-03-09',
   toQuestions: 150,

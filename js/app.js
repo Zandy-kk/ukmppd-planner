@@ -50,7 +50,7 @@ function writeDay(date, patch) {
 }
 
 // ---------- UI state ----------
-const ui = { draft: {}, err: { open: true, rewatch: false, subj: '' }, errDraft: {}, confirmReset: false, timer: null };
+const ui = { draft: {}, err: { open: true, rewatch: false, subj: '' }, errDraft: {}, confirmReset: false, timer: null, recall: {} };
 let toastTimer = null;
 function toast(msg) {
   let t = document.querySelector('.toast');
@@ -141,16 +141,17 @@ function viewDay(date, isToday) {
     : day.type === 'to' ? 'Full try-out' : day.type === 'light' ? 'Light day' : day.type === 'taper' ? (day.subjects[0] ? `Taper · ${short(day.subjects[0])}` : 'Taper · mixed') : day.type === 'eve' ? 'Exam eve' : 'Exam day';
   const tiers = [...new Set((day.subjects || []).map((s) => tierOf(s, st.tiers)))].sort((a, b) => 'PSM'.indexOf(a) - 'PSM'.indexOf(b)).map((t) => `<span class="chip ${t}"><i></i>${TIERS[t]}</span>`).join('');
   const chips = `${tiers}<span class="chip accent">${day.phase === 'Phase 1' ? 'Phase 1 · Material' : day.phase === 'Phase 2' ? 'Phase 2 · Practice' : day.phase}</span><span class="chip">${TYPE_LABEL[day.type]}${day.hours ? ' · ~' + fmtH(day.hours) : ''}</span>${day.ramadan ? '<span class="chip">Ramadan</span>' : ''}${day.partTime ? '<span class="chip">After 15:00</span>' : ''}`;
+  const streakChip = live ? (() => { const k = S.streaks(S.heatmap(P, store.allDays(), todayStr(), materialize), todayStr()); return k.current ? `<span class="chip streak">${k.current}-day streak</span>` : ''; })() : '';
   const back = isToday ? '' : `<a href="#cal" class="btn" style="margin-bottom:10px">${I.back}Calendar</a>`;
   const hero = `${back}<section class="hero"><div>
       <div class="eyebrow">${label(date, { long: true })} · Day ${idx} of ${P.length}</div>
-      <h1 class="h1">${esc(heading)}</h1><div class="chips">${chips}</div></div>
-      <div class="count"><b>${Math.max(0, daysLeft)}</b><span>${daysLeft === 1 ? 'day' : 'days'} to CBT · ${label(st.examDate)}</span></div></section>`;
+      <h1 class="h1">${esc(heading)}</h1><div class="chips">${streakChip}${chips}</div></div>
+      ${countdownHTML()}</section>`;
   const banner = preview ? `<div class="banner">Structured study starts ${label(first, { long: true })}. Here's day 1 so you know what's coming.</div>` : '';
 
-  const main = planCard(day, log, live) + (live ? carryCard() : '') + (day.type === 'light' ? recapCard(date) : '');
-  const side = (live ? suggestionCards() : '') + (preview || day.type === 'exam' ? '' : logCard(day, log) + checkinCard(day, log)) + weekCard(date) + (!isToday ? changeDayCard(day) : '');
-  return `${hero}${banner}<div class="grid"><div class="col">${main}</div><aside class="col" aria-label="Log and week">${side}</aside></div>`;
+  const main = planCard(day, log, live) + (live ? recallCard() : '') + (live ? carryCard() : '') + (day.type === 'light' ? recapCard(date) : '') + weekCard(date, live);
+  const side = (live ? suggestionCards() : '') + (preview || day.type === 'exam' ? '' : logCard(day, log) + checkinCard(day, log)) + (!isToday ? changeDayCard(day) : '') + monthCard(date);
+  return `${hero}${banner}${journeyCard(live ? todayStr() : date)}<div class="grid"><div class="col">${main}</div><aside class="col" aria-label="Log and week">${side}</aside></div>`;
 }
 
 function planCard(day, log, live) {
@@ -243,17 +244,158 @@ function checkinCard(day, log) {
   </section>`;
 }
 
-function weekCard(date) {
-  const ws = weekStart(date);
+// ---------- countdown ----------
+function examMoment() {
+  const st = settings();
+  const [y, m, d] = st.examDate.split('-').map(Number);
+  const [hh, mm] = (st.examTime || '08:00').split(':').map(Number);
+  return new Date(y, m - 1, d, hh || 0, mm || 0, 0).getTime();
+}
+function countdownParts() {
+  const ms = Math.max(0, examMoment() - Date.now());
+  return { d: Math.floor(ms / 86400000), h: Math.floor((ms % 86400000) / 3600000), m: Math.floor((ms % 3600000) / 60000), s: Math.floor((ms % 60000) / 1000), done: ms === 0 };
+}
+function countdownHTML() {
+  const st = settings(); const c = countdownParts();
+  const u = (v, l, id) => `<div class="cu"><b id="cd-${id}">${id === 'd' ? v : pad(v)}</b><span>${l}</span></div>`;
+  return `<div class="count" role="timer" aria-label="Time to the CBT">
+    <div class="cd">${u(c.d, 'days', 'd')}<i>:</i>${u(c.h, 'hours', 'h')}<i>:</i>${u(c.m, 'min', 'm')}<i>:</i>${u(c.s, 'sec', 's')}</div>
+    <div class="cd-l">until CBT · ${label(st.examDate)}, ${esc(st.examTime || '08:00')}</div></div>`;
+}
+function tickCountdown() {
+  const el = document.getElementById('cd-s'); if (!el) return;
+  const c = countdownParts();
+  document.getElementById('cd-d').textContent = c.d;
+  document.getElementById('cd-h').textContent = pad(c.h);
+  document.getElementById('cd-m').textContent = pad(c.m);
+  el.textContent = pad(c.s);
+}
+
+// ---------- side panel: journey, week list, month ----------
+function journeyCard(ref) {
+  const P = plan(); const N = P.length;
+  const idx = Math.max(0, Math.min(N - 1, P.findIndex((d) => d.date >= ref)));
+  const firstOf = (f) => P.findIndex(f);
+  const segs = [
+    { name: 'Lectures', from: 0, cls: 'j-lec' },
+    { name: 'Review', from: firstOf((d) => d.type === 'review'), cls: 'j-rev' },
+    { name: 'Practice', from: firstOf((d) => d.phase === 'Phase 2'), cls: 'j-pra' },
+    { name: 'Taper', from: firstOf((d) => d.phase === 'Taper'), cls: 'j-tap' },
+  ].filter((s) => s.from >= 0);
+  segs.forEach((s, i) => { s.to = i < segs.length - 1 ? segs[i + 1].from : N; });
+  const cur = segs.find((s) => idx >= s.from && idx < s.to) || segs[0];
+  const pctPos = ((idx + 0.5) / N) * 100;
+  return `<section class="card journey-card" aria-label="Journey">
+    <div class="card-h"><span class="ttl">The road to CBT</span><span class="meta">Day ${idx + 1} of ${N} · ${Math.round(((idx + 1) / N) * 100)}% of the way</span></div>
+    <div class="journey"><div class="jbar">${segs.map((s) => `<i class="${s.cls} ${s === cur ? 'on' : ''}" style="flex:${s.to - s.from}"></i>`).join('')}</div>
+      <span class="jmark" style="left:${pctPos}%"></span></div>
+    <div class="jlab">${segs.map((s) => `<span class="${s === cur ? 'on' : ''}"><i class="${s.cls}"></i>${s.name}<em>${label(P[s.from].date).replace(/^\w+ /, '')} – ${label(P[s.to - 1].date).replace(/^\w+ /, '')}</em></span>`).join('')}</div>
+  </section>`;
+}
+
+function weekCard(date, live) {
+  const ws = weekStart(date); const today = todayStr();
   const P = plan(); const logs = store.allDays();
-  const cells = Array.from({ length: 7 }, (_, i) => {
+  const rows = Array.from({ length: 7 }, (_, i) => {
     const dt = addDays(ws, i); const pd = P.find((x) => x.date === dt);
-    if (!pd) return `<div class="wd"><span>${label(dt).slice(0, 3)}</span><b>—</b></div>`;
-    const d = materialize(pd, logs[dt]);
-    const c = d.type === 'practice' ? 'Prac' : dayCode(d).replace('<br>', ' + ');
-    return `<a class="wd ${dt === date ? 'today' : ''}" href="#day/${dt}" aria-label="${label(dt)}: ${esc(d.title)}"><span>${label(dt).slice(0, 3)}</span><b>${d.type === 'review' || d.type === 'drill' ? esc(code(d.subjects[0])) : c}</b><i style="background:${typeDot(d)}"></i></a>`;
+    const dl = label(dt).split(' ');
+    if (!pd) return `<div class="wrow off"><span class="wd2"><b>${dl[0]}</b>${dl[1]}</span><span class="wt muted">Before the plan</span><span></span></div>`;
+    const log = logs[dt] || {}; const d = materialize(pd, log);
+    const req = S.required(d); const n = req.filter((s) => S.isDone(log, s.key)).length;
+    let stat;
+    if (d.type === 'exam') stat = '<span class="ws ex">Exam</span>';
+    else if (dt < today) stat = n === req.length && req.length ? `<span class="ws ok">${I.check(12)}</span>` : n ? `<span class="ws part">${n}/${req.length}</span>` : '<span class="ws miss">—</span>';
+    else if (dt === today) stat = `<span class="ws now">${n ? n + '/' + req.length : 'Today'}</span>`;
+    else stat = `<span class="ws fut">${d.hours ? '~' + fmtH(d.hours).replace(' 0 m', '') : ''}</span>`;
+    const what = d.type === 'lecture' ? `${code(d.lecture.id)}${SUBJECT[d.lecture.id].parts.length > 1 ? ' ' + (d.lecture.part + 1) : ''}`
+      : d.type === 'review' || d.type === 'drill' ? `${code(d.subjects[0])} + ${code(d.subjects[1])}`
+      : d.type === 'practice' ? d.subjects.map(code).join(', ') || 'Catch-up'
+      : d.type === 'taper' ? (d.subjects[0] ? code(d.subjects[0]) : 'Mixed') : '';
+    return `<a class="wrow ${dt === date ? 'sel' : ''} ${dt === today ? 'today' : ''}" href="#day/${dt}">
+      <span class="wd2"><b>${dl[0]}</b>${dl[1]}</span>
+      <span class="wt"><i style="background:${typeDot(d)}"></i><span><b>${TYPE_LABEL[d.type]}</b>${what ? ' · ' + esc(what) : ''}</span></span>${stat}</a>`;
   }).join('');
-  return `<section class="card" aria-label="This week"><div class="card-h"><span class="ttl">This week</span><span class="meta">${label(ws)} – ${label(addDays(ws, 6))}</span></div><div class="week">${cells}</div></section>`;
+  return `<section class="card" aria-label="This week"><div class="card-h"><span class="ttl">This week</span><span class="meta">${label(ws)} – ${label(addDays(ws, 6))}</span></div><div class="wlist">${rows}</div></section>`;
+}
+
+function monthCard(date) {
+  const P = plan(); const logs = store.allDays(); const today = todayStr();
+  const m = date.slice(0, 7); const [y, mo] = m.split('-').map(Number);
+  const firstDow = (parse(`${m}-01`).getUTCDay() + 6) % 7;
+  const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  let cells = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="mh">${d}</span>`).join('');
+  for (let i = 0; i < firstDow; i++) cells += '<span></span>';
+  const counts = {};
+  for (let n = 1; n <= dim; n++) {
+    const dt = `${m}-${pad(n)}`; const pd = P.find((x) => x.date === dt);
+    if (!pd) { cells += `<span class="mc out">${n}</span>`; continue; }
+    const d = materialize(pd, logs[dt]); counts[d.type] = (counts[d.type] || 0) + 1;
+    const lg = logs[dt]; const ok = lg && lg.done && Object.values(lg.done).some(Boolean);
+    cells += `<a class="mc t-${d.type} ${dt === today ? 'today' : ''} ${dt === date ? 'sel' : ''}" href="#day/${dt}" aria-label="${label(dt)}: ${esc(d.title)}">${n}${ok ? '<i></i>' : ''}</a>`;
+  }
+  const sum = [['lecture', 'lecture'], ['practice', 'practice'], ['review', 'review'], ['to', 'TO'], ['drill', 'drill'], ['taper', 'taper']].filter(([k]) => counts[k]).map(([k, l]) => `${counts[k]} ${l}`).join(' · ');
+  return `<section class="card" aria-label="This month"><div class="card-h"><span class="ttl">${monthName(mo - 1)}</span><a class="meta" href="#cal">Full calendar →</a></div>
+    <div class="mini-cal">${cells}</div><div class="meta">${sum}</div></section>`;
+}
+
+// ---------- daily recall ----------
+function recallCard() {
+  const today = todayStr();
+  const errs = store.errors();
+  const open = errs.filter((e) => !e.closed && e.note);
+  if (!open.length) return '';
+  const doneToday = errs.filter((e) => e.rc && e.rc.last === today).length;
+  const due = S.recallDue(errs, today);
+  const item = due.find((e) => e.id === ui.recall.id) || (ui.recall.more || !doneToday ? due[0] : null);
+  if (!item) {
+    return `<section class="card recall" aria-label="Daily recall"><div class="card-h"><span class="ttl">Daily recall</span><span class="meta">${doneToday} done today</span></div>
+      <p class="note">${due.length ? `Nice. ${due.length} more card${due.length > 1 ? 's are' : ' is'} due if you want extra reps.` : 'All caught up. New cards come from your error log.'}</p>
+      ${due.length ? '<button class="btn" data-act="recallmore" style="align-self:flex-start">One more</button>' : ''}</section>`;
+  }
+  ui.recall.id = item.id;
+  const { cue, answer } = S.recallCue(item.note);
+  const shown = ui.recall.revealed === item.id;
+  const subj = item.subj && SUBJECT[item.subj] ? SUBJECT[item.subj].name : 'Mixed';
+  return `<section class="card recall" aria-label="Daily recall">
+    <div class="card-h"><span class="ttl">Daily recall</span><span class="meta">${due.length} due · ${doneToday} done today</span></div>
+    <div class="rq"><div class="eyebrow">${esc(subj)} · ${esc(item.cat || '')}</div><div class="rcue">${esc(cue)}</div>
+      ${shown ? `<div class="rans">${esc(answer)}</div>` : '<p class="meta" style="margin:6px 0 0">Say the rule out loud, then reveal.</p>'}</div>
+    ${shown ? `<div class="row"><button class="btn p" data-act="recall" data-id="${item.id}" data-ok="1" style="flex:1">Got it</button><button class="btn" data-act="recall" data-id="${item.id}" data-ok="0" style="flex:1">Not yet</button></div>`
+      : `<button class="btn p wide" data-act="reveal" data-id="${item.id}">Reveal</button>`}
+    ${item.rc && item.rc.seen ? `<span class="meta">Seen ${item.rc.seen}× · ${item.rc.streak ? item.rc.streak + ' in a row' : 'missed last time'}</span>` : ''}
+  </section>`;
+}
+
+// ---------- heatmap ----------
+function heatmapCard() {
+  const P = plan(); const today = todayStr();
+  const cells = S.heatmap(P, store.allDays(), today, materialize);
+  const k = S.streaks(cells, today);
+  const ws0 = weekStart(P[0].date);
+  const weeks = Math.ceil((diffDays(ws0, P[P.length - 1].date) + 1) / 7);
+  const byDate = Object.fromEntries(cells.map((c) => [c.date, c]));
+  let cols = '';
+  for (let w = 0; w < weeks; w++) {
+    let col = '';
+    for (let i = 0; i < 7; i++) {
+      const dt = addDays(ws0, w * 7 + i); const c = byDate[dt];
+      if (!c) { col += '<span class="hm none"></span>'; continue; }
+      const tip = `${label(dt)} · ${TYPE_LABEL[c.type]}${c.lvl >= 0 ? ` · ${fmtH(c.hours)}${c.score !== null ? ` · ${Math.round(c.score * 100)}% of steps` : ''}` : ''}`;
+      col += `<a class="hm l${c.lvl < 0 ? 'f' : c.lvl} ${dt === today ? 'today' : ''} ${c.type === 'exam' ? 'exam' : ''}" href="#day/${dt}" title="${esc(tip)}" aria-label="${esc(tip)}"></a>`;
+    }
+    const first = addDays(ws0, w * 7);
+    cols += `<div class="hmc"><span class="hml">${w === 0 || first.slice(8) <= '07' ? label(first).split(' ')[2] : ''}</span>${col}</div>`;
+  }
+  const hrs = cells.reduce((n, c) => n + (c.lvl >= 0 ? c.hours : 0), 0);
+  const full = cells.filter((c) => c.score !== null && c.score >= 0.8 && c.date <= today).length;
+  return `<section class="card" aria-label="Study heatmap">
+    <div class="card-h"><span class="ttl">Study heatmap</span><span class="meta">${fmtH(hrs)} logged · ${full} full days</span></div>
+    <div class="hm-wrap"><div class="hmd"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div><div class="hmg">${cols}</div></div>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div class="chips"><span class="chip streak">${k.current}-day streak</span><span class="chip">Best ${k.best}</span></div>
+      <div class="hm-legend"><span>Less</span><i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i><span>More</span></div></div>
+    <p class="meta" style="margin:0">A day counts toward the streak when 80% or more of its steps are done.</p>
+  </section>`;
 }
 
 function suggestionCards() {
@@ -335,6 +477,7 @@ function viewStats() {
 
   return `<section class="hero"><div><div class="eyebrow">Stats · week of ${label(wk.ws)}</div><h1 class="h1">How it's going</h1></div></section>
     <div class="col">${kpis}
+    ${heatmapCard()}
     <div class="grid even"><section class="card"><span class="ttl">TO scores</span>${toChart}</section><section class="card"><span class="ttl">Weekly accuracy · practice sets</span>${wkChart}</section></div>
     <div class="grid even"><section class="card"><div class="card-h"><span class="ttl">Lecture progress</span><span class="meta">${lp.done} of ${lp.total} parts</span></div>${lec}</section>${recapCard(ref)}</div>
     <section class="card"><div class="card-h"><span class="ttl">Subjects · weakest first</span><span class="meta">Rolling = last 4 sets</span></div>
@@ -378,7 +521,7 @@ function viewErrors() {
     <div class="row"><div class="f"><label for="err-subj">Subject</label><select id="err-subj" data-in="errSubj"><option value="">—</option>${SUBJECTS.map((s) => `<option value="${s.id}" ${d.subj === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
     <div class="f"><label for="err-cat">Category</label><select id="err-cat" data-in="errCat">${CATEGORIES.map((c) => `<option ${d.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div></div>
     <button class="flag ${d.rewatch ? 'on' : ''}" style="align-self:flex-start;min-height:36px" data-act="errdraftrw" aria-pressed="${!!d.rewatch}">${d.rewatch ? '✓ ' : ''}Rewatch this concept</button>
-    <p class="meta" style="margin:0">Flagged items show up on that subject's next review day.</p>
+    <p class="meta" style="margin:0">Tip: write it as <b>cue: rule</b> so the daily recall card can quiz you. Flagged items show up on that subject's next review day.</p>
     <button class="btn p wide" data-act="adderr">Add to error log</button></section>`;
   const filters = `<div class="row" style="align-items:center"><div class="pills">
       <button class="pill ${f.open ? 'on' : ''}" data-act="errf" data-k="open" data-v="1">Open</button><button class="pill ${!f.open ? 'on' : ''}" data-act="errf" data-k="open" data-v="0">All</button>
@@ -408,7 +551,7 @@ function viewSettings() {
   return `<section class="hero"><div><div class="eyebrow">Settings</div><h1 class="h1">Your plan</h1></div></section>
   <div class="grid even"><div class="col">
     <section class="card"><span class="ttl">Exam and phases</span>
-      <div class="row">${fld('examDate', 'CBT exam date', 'date', st.examDate)}${fld('materialEnd', 'Lectures end', 'date', st.materialEnd)}</div>
+      <div class="row">${fld('examDate', 'CBT exam date', 'date', st.examDate)}${fld('examTime', 'Exam start time', 'time', st.examTime || '08:00')}${fld('materialEnd', 'Lectures end', 'date', st.materialEnd)}</div>
       <div class="row">${fld('ramadanStart', 'Ramadan starts', 'date', st.ramadanStart)}${fld('ramadanEnd', 'Ramadan ends', 'date', st.ramadanEnd)}</div>
       <div class="row">${fld('toQuestions', 'TO questions', 'number', st.toQuestions)}${fld('toMinutes', 'TO minutes', 'number', st.toMinutes)}${fld('ankiTarget', 'Anki per day', 'number', st.ankiTarget)}</div>
       <p class="note">${P.length} days · ${c.lecture || 0} lecture · ${c.practice || 0} practice · ${c.review || 0} review · ${c.to || 0} TO · ${c.drill || 0} drill · ${c.light || 0} light · taper ${label(addDays(st.examDate, -6))} → ${label(addDays(st.examDate, -1))}</p>
@@ -455,6 +598,7 @@ function tickTimer() {
   el.textContent = `${pad(Math.floor(left / 60000))}:${pad(Math.floor((left % 60000) / 1000))}`;
 }
 setInterval(() => {
+  tickCountdown();
   if (!ui.timer) return;
   if (Date.now() >= ui.timer.end) { ui.timer = null; toast('Time is up.'); render(); return; }
   tickTimer();
@@ -527,6 +671,13 @@ $app.addEventListener('click', async (ev) => {
     case 'ovtype': { const ov = { ...(st.overrides || {}) }; ov[date] = { type: el.dataset.v }; store.updateSettings({ overrides: ov }); toast('Day changed.'); break; }
     case 'ovreset': { const ov = { ...(st.overrides || {}) }; delete ov[date]; store.updateSettings({ overrides: ov }); break; }
     case 'clearov': store.updateSettings({ overrides: {} }); toast('Day changes undone.'); break;
+    case 'reveal': ui.recall.revealed = el.dataset.id; render(); break;
+    case 'recall': {
+      const e = store.errors().find((x) => x.id === el.dataset.id);
+      if (e) { store.updateError(e.id, { rc: S.recallNext(e.rc, el.dataset.ok === '1', todayStr()) }); }
+      ui.recall = {}; toast(el.dataset.ok === '1' ? 'Nice. See you again in a few days.' : 'It comes back tomorrow.'); break;
+    }
+    case 'recallmore': ui.recall = { more: true }; render(); break;
     case 'errdraftrw': ui.errDraft.rewatch = !ui.errDraft.rewatch; render(); break;
     case 'adderr': {
       const d = ui.errDraft;
@@ -567,6 +718,7 @@ $app.addEventListener('change', async (ev) => {
   } else if (k.startsWith('set-')) {
     const id = k.slice(4); let v = el.value;
     if (['toQuestions', 'toMinutes', 'ankiTarget'].includes(id)) { v = intOrNull(v); if (!v) return; }
+    else if (id === 'examTime') { if (!/^\d{2}:\d{2}$/.test(v)) return; }
     else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
     if (id === 'examDate' && v <= DEFAULT_SETTINGS.fullTimeStart) { toast('The exam date must be after 25 Dec.'); return; }
     store.updateSettings({ [id]: v }); toast('Saved. The plan has been rebuilt.');
