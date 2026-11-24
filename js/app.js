@@ -22,7 +22,11 @@ const I = {
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   stats: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   err: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>',
-  gear: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+  gear: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  sun: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  plus: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
   x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 };
@@ -50,7 +54,25 @@ function writeDay(date, patch) {
 }
 
 // ---------- UI state ----------
-const ui = { draft: {}, err: { open: true, rewatch: false, subj: '' }, errDraft: {}, confirmReset: false, timer: null, recall: {} };
+const ui = { pref: {}, err: { open: true, rewatch: false, subj: '' }, errDraft: {}, confirmReset: false, timer: null, recall: {}, sheet: null };
+
+// ---------- theme (per device) ----------
+const THEME_KEY = 'ukmppd.theme';
+const themePref = () => { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch { return 'auto'; } };
+const darkMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const effectiveTheme = () => { const p = themePref(); return p === 'auto' ? (darkMQ && darkMQ.matches ? 'dark' : 'light') : p; };
+function applyTheme() {
+  const p = themePref(); const root = document.documentElement;
+  if (p === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', p);
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', effectiveTheme() === 'dark' ? '#14171F' : '#EEE8DE');
+}
+function setTheme(v) { try { localStorage.setItem(THEME_KEY, v); } catch {} applyTheme(); render(); }
+if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', () => { applyTheme(); render(); });
+applyTheme();
+
+// A day outside the plan (e.g. before 1 Dec): you can still log TOs and sets on it.
+function freeDay(date) { return { date, type: 'free', phase: '', subjects: [], steps: [], hours: 0, targets: { q: [0, 0], anki: 0, ankiNote: 'due cards' } }; }
+const dayOrFree = (date) => dayOf(date) || freeDay(date);
 let toastTimer = null;
 function toast(msg) {
   let t = document.querySelector('.toast');
@@ -72,13 +94,37 @@ function shell(view, body) {
   return `<header class="top">
       <a class="brand" href="#today"><span class="logo">${I.check(16)}</span>UKMPPD Planner</a>
       <nav class="nav" aria-label="Main">${items.map(([v, l]) => `<a href="#${v}" class="${on(v)}">${l}</a>`).join('')}</nav>
-      <div class="right">${syncBadge()}<a href="#settings" class="round ${view === 'settings' ? 'on' : ''}" aria-label="Settings">${I.gear}</a></div>
+      <div class="right">${syncBadge()}<button class="round" data-act="theme" aria-label="${effectiveTheme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}" title="${effectiveTheme() === 'dark' ? 'Light mode' : 'Dark mode'}">${effectiveTheme() === 'dark' ? I.sun : I.moon}</button><a href="#settings" class="round ${view === 'settings' ? 'on' : ''}" aria-label="Settings" title="Settings">${I.gear}</a></div>
     </header>
     <main class="wrap">${body}</main>
-    <nav class="tabbar" aria-label="Main">${items.map(([v, l, i]) => `<a href="#${v}" class="${on(v)}">${i}<span>${l}</span></a>`).join('')}</nav>`;
+    <nav class="tabbar" aria-label="Main">${items.map(([v, l, i]) => `<a href="#${v}" class="${on(v)}">${i}<span>${l}</span></a>`).join('')}</nav>
+    ${ui.sheet ? '' : `<button class="fab ${view === 'today' || view === 'day' ? 'fab-today' : ''}" data-act="sheet" aria-label="Log a set or TO score for today">${I.plus}<span>Log</span></button>`}
+    ${ui.sheet ? sheetHTML() : ''}`;
 }
 
 let pendingRender = false;
+// Keep whatever is typed in a log form when the screen refreshes (e.g. after a sync).
+const formKey = (f) => (f.dataset.sheet ? 's' : 'c') + f.dataset.date;
+function snapshotForms() {
+  const out = {};
+  $app.querySelectorAll('form.logform').forEach((f) => {
+    const fd = new FormData(f);
+    out[formKey(f)] = { q: fd.get('q') || '', c: fd.get('c') || '', kind: fd.get('kind'), subj: fd.get('subj'), subjOther: fd.get('subjOther') || '', bank: fd.get('bank') || '' };
+  });
+  return out;
+}
+function restoreForms(snap) {
+  $app.querySelectorAll('form.logform').forEach((f) => {
+    const v = snap[formKey(f)]; if (!v) return;
+    const el = f.elements;
+    el.q.value = v.q; el.c.value = v.c;
+    const pick = (name, val) => { const r = f.querySelector(`input[type="radio"][name="${name}"][value="${val}"]`); if (r) r.checked = true; };
+    if (v.kind) { pick('kind', v.kind); f.dataset.kind = v.kind; el.q.placeholder = v.kind === 'to' ? el.q.dataset.phTo : el.q.dataset.phSet; }
+    if (v.subj) { pick('subj', v.subj); f.dataset.other = v.subj === '__other' ? '1' : '0'; }
+    if (v.bank) pick('bank', v.bank);
+    if (el.subjOther) el.subjOther.value = v.subjOther;
+  });
+}
 function render() {
   const a = document.activeElement;
   if (a && $app.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'file') { pendingRender = true; return; }
@@ -94,13 +140,20 @@ function render() {
       : viewDay(todayStr(), true);
   } catch (e) { console.error(e); body = `<div class="card"><p class="note">Something went wrong showing this page: ${esc(e.message)}</p></div>`; }
   const y = window.scrollY;
+  const kept = snapshotForms();
   $app.innerHTML = shell(r.view, body);
+  restoreForms(kept);
+  document.documentElement.classList.toggle('sheet-open', !!ui.sheet);
   window.scrollTo(0, y);
   tickTimer();
 }
 $app.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) render(); }, 0));
 
 // ---------- shared bits ----------
+function tierSelect(id, withName = false) {
+  const t = tierOf(id, settings().tiers);
+  return `<label class="tsel ${t}" title="Change ${esc(SUBJECT[id].name)} tier"><i></i>${withName ? `<span class="tsn">${esc(short(id))} ·</span>` : ''}<span>${TIERS[t]}</span>${I.chev}<select data-in="tier" data-id="${id}" aria-label="${esc(SUBJECT[id].name)} tier">${['P', 'S', 'M'].map((k) => `<option value="${k}" ${t === k ? 'selected' : ''}>${TIERS[k]}</option>`).join('')}</select></label>`;
+}
 const tierChip = (id) => { const t = tierOf(id, settings().tiers); return `<span class="chip ${t}"><i></i>${TIERS[t]}</span>`; };
 const accCls = (a) => (a === null || a === undefined ? '' : a >= 85 ? 'good' : a >= 70 ? 'warnc' : 'bad');
 const typeDot = (d) => ({ lecture: 'var(--accent)', practice: 'var(--mai-dot)', review: 'var(--plum)', to: 'var(--accent-ink)', drill: 'var(--str-dot)', light: 'var(--line2)', taper: 'var(--pri-dot)', eve: 'var(--pri-dot)', exam: 'var(--pri)' }[d.type]);
@@ -139,7 +192,8 @@ function viewDay(date, isToday) {
     : day.type === 'review' || day.type === 'drill' ? `${short(day.subjects[0])} + ${short(day.subjects[1])}`
     : day.type === 'practice' ? (day.subjects.length ? `Practice · ${day.subjects.map(short).join(', ')}` : 'Practice + catch-up')
     : day.type === 'to' ? 'Full try-out' : day.type === 'light' ? 'Light day' : day.type === 'taper' ? (day.subjects[0] ? `Taper · ${short(day.subjects[0])}` : 'Taper · mixed') : day.type === 'eve' ? 'Exam eve' : 'Exam day';
-  const tiers = [...new Set((day.subjects || []).map((s) => tierOf(s, st.tiers)))].sort((a, b) => 'PSM'.indexOf(a) - 'PSM'.indexOf(b)).map((t) => `<span class="chip ${t}"><i></i>${TIERS[t]}</span>`).join('');
+  const uniq = [...new Set(day.subjects || [])];
+  const tiers = uniq.map((id) => tierSelect(id, uniq.length > 1)).join('');
   const chips = `${tiers}<span class="chip accent">${day.phase === 'Phase 1' ? 'Phase 1 · Material' : day.phase === 'Phase 2' ? 'Phase 2 · Practice' : day.phase}</span><span class="chip">${TYPE_LABEL[day.type]}${day.hours ? ' · ~' + fmtH(day.hours) : ''}</span>${day.ramadan ? '<span class="chip">Ramadan</span>' : ''}${day.partTime ? '<span class="chip">After 15:00</span>' : ''}`;
   const streakChip = live ? (() => { const k = S.streaks(S.heatmap(P, store.allDays(), todayStr(), materialize), todayStr()); return k.current ? `<span class="chip streak">${k.current}-day streak</span>` : ''; })() : '';
   const back = isToday ? '' : `<a href="#cal" class="btn" style="margin-bottom:10px">${I.back}Calendar</a>`;
@@ -150,7 +204,10 @@ function viewDay(date, isToday) {
   const banner = preview ? `<div class="banner">Structured study starts ${label(first, { long: true })}. Here's day 1 so you know what's coming.</div>` : '';
 
   const main = planCard(day, log, live) + (live ? recallCard() : '') + (live ? carryCard() : '') + (day.type === 'light' ? recapCard(date) : '') + weekCard(date, live);
-  const side = (live ? suggestionCards() : '') + (preview || day.type === 'exam' ? '' : logCard(day, log) + checkinCard(day, log)) + (!isToday ? changeDayCard(day) : '') + monthCard(date);
+  const realToday = freeDay(todayStr());
+  const logArea = preview ? logCard(realToday, store.day(realToday.date), `Log for today · ${label(realToday.date)}`) + checkinCard(realToday, store.day(realToday.date))
+    : day.type === 'exam' ? '' : logCard(day, log) + checkinCard(day, log);
+  const side = (live ? suggestionCards() : '') + logArea + (!isToday ? changeDayCard(day) : '') + monthCard(date);
   return `${hero}${banner}${journeyCard(live ? todayStr() : date)}<div class="grid"><div class="col">${main}</div><aside class="col" aria-label="Log and week">${side}</aside></div>`;
 }
 
@@ -208,29 +265,54 @@ function recapCard(date) {
     <div><div class="meta" style="margin-bottom:6px">Weakest this week · pick next week's repair targets from here</div><div class="chips">${weak}</div></div></section>`;
 }
 
-function logCard(day, log) {
+function logForm(day, opts = {}) {
   const st = settings();
-  const d = ui.draft[day.date] || (ui.draft[day.date] = {});
-  if (d.kind === undefined) d.kind = day.type === 'to' ? 'to' : 'set';
-  if (d.subj === undefined) d.subj = (day.subjects && day.subjects[0]) || '';
-  const isTO = d.kind === 'to';
-  const choices = (day.subjects || []).filter((s, i, a) => a.indexOf(s) === i);
-  const subj = isTO ? '' : `<div class="f"><label>Subject</label><div class="pills">${choices.map((s) => `<button class="pill ${d.subj === s ? 'on' : ''}" data-act="draft" data-date="${day.date}" data-k="subj" data-v="${s}">${esc(short(s))}</button>`).join('')}<button class="pill ${!choices.includes(d.subj) ? 'on' : ''}" data-act="draft" data-date="${day.date}" data-k="subj" data-v="">${choices.length ? 'Other' : 'Mixed'}</button></div></div>
-    ${!choices.includes(d.subj) ? `<div class="f"><label for="so-${day.date}">Which subject</label><select id="so-${day.date}" data-in="subjOther" data-date="${day.date}"><option value="">Mixed</option>${SUBJECTS.map((s) => `<option value="${s.id}" ${d.subjOther === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}`;
+  const pref = opts.pref || ui.pref[day.date] || {};
+  const kind = pref.kind || (day.type === 'to' ? 'to' : 'set');
+  const choices = [...new Set(day.subjects || [])];
+  const subj = pref.subj !== undefined ? pref.subj : (choices[0] || '__other');
+  const other = !choices.includes(subj);
+  const uid = `${opts.sheet ? 's' : 'c'}-${day.date}`;
+  const subjRadios = choices.map((id) => `<label class="pill r"><input type="radio" name="subj" value="${id}" ${subj === id ? 'checked' : ''}><span>${esc(short(id))}</span></label>`).join('')
+    + (choices.length ? `<label class="pill r"><input type="radio" name="subj" value="__other" ${other ? 'checked' : ''}><span>Other</span></label>` : '<input type="hidden" name="subj" value="__other">');
+  return `<form class="logform" data-date="${day.date}" data-kind="${kind}" data-other="${other || !choices.length ? '1' : '0'}" ${opts.sheet ? 'data-sheet="1"' : ''} autocomplete="off">
+    <div class="segk" role="radiogroup" aria-label="What are you logging">
+      <label><input type="radio" name="kind" value="set" ${kind === 'set' ? 'checked' : ''}><span>Practice set</span></label>
+      <label><input type="radio" name="kind" value="to" ${kind === 'to' ? 'checked' : ''}><span>TO score</span></label></div>
+    <div class="fields">
+      <div class="f"><label for="q-${uid}">Questions</label><input id="q-${uid}" name="q" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" placeholder="${kind === 'to' ? st.toQuestions : '60'}" data-ph-set="60" data-ph-to="${st.toQuestions}"></div>
+      <div class="f"><label for="c-${uid}">Correct</label><input id="c-${uid}" name="c" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" placeholder="0" required></div>
+    </div>
+    <div class="f only-set"><span class="flabel">Subject</span>${choices.length ? `<div class="pills">${subjRadios}</div>` : subjRadios}
+      <select class="only-other" name="subjOther" aria-label="Which subject"><option value="">Mixed / several subjects</option>${SUBJECTS.map((x) => `<option value="${x.id}" ${pref.subjOther === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="f"><span class="flabel">Source <span class="muted">(optional)</span></span><div class="pills">${BANKS.map((b) => `<label class="pill r"><input type="radio" name="bank" value="${b}" ${pref.bank === b ? 'checked' : ''}><span>${b}</span></label>`).join('')}</div></div>
+    <button class="btn p wide" type="submit">Save</button>
+  </form>`;
+}
+
+function logCard(day, log, title) {
   const sets = S.daySets(log);
   const t = S.dayTotals(log);
   const list = sets.length ? `<div class="list">${sets.map((s, i) => `<div class="li"><span class="grow"><b>${s.c}/${s.q}</b> · ${S.pct(+s.c, +s.q)}% · ${s.kind === 'to' ? 'TO' : esc(s.subj ? short(s.subj) : 'Mixed')}${s.bank ? ' · ' + esc(s.bank) : ''}</span><button class="x" data-act="delset" data-date="${day.date}" data-i="${i}" aria-label="Remove this entry">${I.x}</button></div>`).join('')}</div>` : '';
   return `<section class="card" id="logcard" aria-label="Log questions">
-    <div class="card-h"><span class="ttl">${isTO ? 'Log TO score' : 'Log practice'}</span><div class="pills"><button class="pill ${!isTO ? 'on' : ''}" data-act="draft" data-date="${day.date}" data-k="kind" data-v="set">Set</button><button class="pill ${isTO ? 'on' : ''}" data-act="draft" data-date="${day.date}" data-k="kind" data-v="to">TO</button></div></div>
-    <div class="fields">
-      <div class="f"><label for="q-${day.date}">Questions</label><input id="q-${day.date}" inputmode="numeric" data-in="q" data-date="${day.date}" value="${esc(d.q ?? '')}" placeholder="${isTO ? st.toQuestions : '60'}"></div>
-      <div class="f"><label for="c-${day.date}">Correct</label><input id="c-${day.date}" inputmode="numeric" data-in="c" data-date="${day.date}" value="${esc(d.c ?? '')}" placeholder="0"></div>
-    </div>
-    ${subj}
-    <div class="f"><label>Source (optional)</label><div class="pills">${BANKS.map((b) => `<button class="pill ${d.bank === b ? 'on' : ''}" data-act="draft" data-date="${day.date}" data-k="bank" data-v="${b}">${b}</button>`).join('')}</div></div>
-    <button class="btn p wide" data-act="addset" data-date="${day.date}">Save</button>
-    <div class="minis"><div class="mini"><span>Questions</span><b>${t.q}<small> / ${day.targets.q[1] || '—'}</small></b></div><div class="mini"><span>Accuracy</span><b class="${accCls(t.acc)}">${t.acc === null ? '—' : Math.round(t.acc) + '%'}</b></div><div class="mini"><span>Anki</span><b>${+log.anki || 0}</b></div></div>
+    <div class="card-h"><span class="ttl">${title || 'Log practice or TO'}</span></div>
+    ${logForm(day)}
+    <div class="minis"><div class="mini"><span>Questions</span><b>${t.q}${day.targets.q[1] ? `<small> / ${day.targets.q[1]}</small>` : ''}</b></div><div class="mini"><span>Accuracy</span><b class="${accCls(t.acc)}">${t.acc === null ? '—' : Math.round(t.acc) + '%'}</b></div><div class="mini"><span>Anki</span><b>${+log.anki || 0}</b></div></div>
     ${list}</section>`;
+}
+
+function sheetHTML() {
+  const date = ui.sheet.date || todayStr();
+  const day = dayOrFree(date); const log = store.day(date);
+  const sets = S.daySets(log);
+  return `<div class="sheet-bg" data-act="sheetclose" aria-hidden="true"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="card-h"><span class="ttl" id="sheet-title">Log for ${date === todayStr() ? 'today' : label(date)}</span><button class="x" data-act="sheetclose" aria-label="Close">${I.x}</button></div>
+    <div class="meta" style="margin-top:-8px">${label(date, { long: true })}${day.type !== 'free' ? ' · ' + esc(TYPE_LABEL[day.type]) : ''}</div>
+    ${logForm(day, { sheet: true, pref: ui.sheet })}
+    ${sets.length ? `<div class="meta">Logged today: ${sets.map((s) => `${s.c}/${s.q}${s.kind === 'to' ? ' TO' : ''}`).join(' · ')}</div>` : ''}
+  </div>`;
 }
 
 function checkinCard(day, log) {
@@ -388,13 +470,23 @@ function heatmapCard() {
   }
   const hrs = cells.reduce((n, c) => n + (c.lvl >= 0 ? c.hours : 0), 0);
   const full = cells.filter((c) => c.score !== null && c.score >= 0.8 && c.date <= today).length;
+  const studied = cells.filter((c) => c.lvl > 0 && c.date <= today).length;
   return `<section class="card" aria-label="Study heatmap">
-    <div class="card-h"><span class="ttl">Study heatmap</span><span class="meta">${fmtH(hrs)} logged · ${full} full days</span></div>
-    <div class="hm-wrap"><div class="hmd"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div><div class="hmg">${cols}</div></div>
-    <div class="row" style="justify-content:space-between;align-items:center">
-      <div class="chips"><span class="chip streak">${k.current}-day streak</span><span class="chip">Best ${k.best}</span></div>
-      <div class="hm-legend"><span>Less</span><i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i><span>More</span></div></div>
-    <p class="meta" style="margin:0">A day counts toward the streak when 80% or more of its steps are done.</p>
+    <div class="card-h"><span class="ttl">Study heatmap</span><span class="meta">${label(P[0].date)} → ${label(P[P.length - 1].date)}</span></div>
+    <div class="hm-layout">
+      <div class="hm-main"><div class="hm-wrap"><div class="hmd"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div><div class="hmg">${cols}</div></div>
+        <div class="hm-legend"><span>Less</span><i class="hm l0"></i><i class="hm l1"></i><i class="hm l2"></i><i class="hm l3"></i><i class="hm l4"></i><span>More</span><span class="hm-gap"></span><i class="hm lf"></i><span>Ahead</span><i class="hm exam"></i><span>Exam</span></div></div>
+      <div class="hm-side">
+        <div class="streak-big"><b>${k.current}</b><span>day streak</span></div>
+        <div class="hm-stats">
+          <div><span>Best streak</span><b>${k.best}</b></div>
+          <div><span>Full days</span><b>${full}</b></div>
+          <div><span>Hours logged</span><b>${Math.round(hrs)}</b></div>
+          <div><span>Avg / study day</span><b>${studied ? fmtH(hrs / studied) : '—'}</b></div>
+        </div>
+        <p class="meta" style="margin:0">A day joins the streak when 80% or more of its steps are done. Today doesn't break it until it's over.</p>
+      </div>
+    </div>
   </section>`;
 }
 
@@ -470,7 +562,7 @@ function viewStats() {
   const rows = subj.map((s) => {
     const a = s.rolling ?? s.acc;
     const color = a === null ? 'var(--line2)' : a >= 85 ? 'var(--mai-dot)' : a >= 70 ? 'var(--str-dot)' : 'var(--pri-dot)';
-    return `<tr><td>${esc(SUBJECT[s.id].name)}<div class="sbar"><i style="width:${a ?? 0}%;background:${color}"></i></div></td><td>${tierChip(s.id)}</td><td class="num hide-sm">${s.q}</td><td class="num hide-sm">${s.acc === null ? '—' : Math.round(s.acc) + '%'}</td><td class="num"><b>${s.rolling === null ? '—' : Math.round(s.rolling) + '%'}</b></td></tr>`;
+    return `<tr><td>${esc(SUBJECT[s.id].name)}<div class="sbar"><i style="width:${a ?? 0}%;background:${color}"></i></div></td><td>${tierSelect(s.id)}</td><td class="num hide-sm">${s.q}</td><td class="num hide-sm">${s.acc === null ? '—' : Math.round(s.acc) + '%'}</td><td class="num"><b>${s.rolling === null ? '—' : Math.round(s.rolling) + '%'}</b></td></tr>`;
   }).join('');
   const cats = CATEGORIES.map((c) => [c, errs.filter((e) => e.cat === c).length]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
   const catHtml = cats.length ? `<div class="list">${cats.map(([c, n]) => `<div class="li" style="padding-right:14px"><span class="grow">${esc(c)}</span><b>${n}</b></div>`).join('')}</div>` : '<div class="empty">Error categories show up once you log misses.</div>';
@@ -542,28 +634,55 @@ function viewErrors() {
 function viewSettings() {
   const st = settings(); const P = plan();
   const c = P.reduce((a, d) => { a[d.type] = (a[d.type] || 0) + 1; return a; }, {});
+  const row = (id, lbl, hint, type, val, extra = '') => `<div class="srow"><div class="sl"><label for="${id}">${lbl}</label>${hint ? `<span>${hint}</span>` : ''}</div><input id="${id}" type="${type}" data-in="set-${id}" value="${esc(val)}" ${extra}></div>`;
+  const tp = themePref();
   const acct = store.mode === 'cloud' && store.user
-    ? `<p class="note">Signed in as <b>${esc(store.user.email)}</b> · ${syncBadge().replace('sync-label', '')}</p><div class="row"><button class="btn" data-act="syncnow">Sync now</button><button class="btn" data-act="signout">Sign out</button></div>`
-    : store.configured ? `<p class="note">Using this device only. Sign in to sync your phone and laptop.</p><button class="btn p" data-act="signout">Sign in</button>`
-      : `<div class="banner warn" style="margin:0">Supabase isn't connected, so data is saved on this device only. Add your Project URL and key to js/config.js.</div>`;
-  const fld = (id, lbl, type, val) => `<div class="f"><label for="${id}">${lbl}</label><input id="${id}" type="${type}" data-in="set-${id}" value="${esc(val)}"></div>`;
-  const tiers = SUBJECTS.map((s) => { const t = tierOf(s.id, st.tiers); return `<div class="tr"><span class="nm">${esc(s.name)}</span><span class="tseg" role="group" aria-label="${esc(s.name)} tier">${['P', 'S', 'M'].map((k) => `<button class="${t === k ? 'on ' + k : ''}" data-act="tier" data-id="${s.id}" data-v="${k}" aria-pressed="${t === k}">${TIERS[k]}</button>`).join('')}</span></div>`; }).join('');
+    ? `<div class="srow"><div class="sl"><span class="lbl">Signed in</span><span>${esc(store.user.email)}</span></div>${syncBadge().replace('sync-label', '')}</div>
+       <div class="srow btns"><button class="btn" data-act="syncnow">Sync now</button><button class="btn" data-act="signout">Sign out</button></div>`
+    : store.configured ? `<div class="srow"><div class="sl"><span class="lbl">This device only</span><span>Sign in to sync your phone, iPad and laptop.</span></div><button class="btn p" data-act="signout">Sign in</button></div>`
+      : `<div class="banner warn" style="margin:0">Supabase isn't connected, so data stays on this device. Add your Project URL and key to js/config.js.</div>`;
+  const groups = ['P', 'S', 'M'].map((k) => {
+    const list = SUBJECTS.filter((x) => tierOf(x.id, st.tiers) === k);
+    return `<div class="tgroup"><div class="tgh"><span class="chip ${k}"><i></i>${TIERS[k]}</span><span class="meta">${list.length} subject${list.length === 1 ? '' : 's'}</span></div>
+      ${list.map((x) => `<div class="srow tight"><span class="nm">${esc(x.name)}</span>${tierSelect(x.id)}</div>`).join('') || '<div class="meta" style="padding:8px 0">None</div>'}</div>`;
+  }).join('');
   return `<section class="hero"><div><div class="eyebrow">Settings</div><h1 class="h1">Your plan</h1></div></section>
-  <div class="grid even"><div class="col">
-    <section class="card"><span class="ttl">Exam and phases</span>
-      <div class="row">${fld('examDate', 'CBT exam date', 'date', st.examDate)}${fld('examTime', 'Exam start time', 'time', st.examTime || '08:00')}${fld('materialEnd', 'Lectures end', 'date', st.materialEnd)}</div>
-      <div class="row">${fld('ramadanStart', 'Ramadan starts', 'date', st.ramadanStart)}${fld('ramadanEnd', 'Ramadan ends', 'date', st.ramadanEnd)}</div>
-      <div class="row">${fld('toQuestions', 'TO questions', 'number', st.toQuestions)}${fld('toMinutes', 'TO minutes', 'number', st.toMinutes)}${fld('ankiTarget', 'Anki per day', 'number', st.ankiTarget)}</div>
-      <p class="note">${P.length} days · ${c.lecture || 0} lecture · ${c.practice || 0} practice · ${c.review || 0} review · ${c.to || 0} TO · ${c.drill || 0} drill · ${c.light || 0} light · taper ${label(addDays(st.examDate, -6))} → ${label(addDays(st.examDate, -1))}</p>
-      ${Object.keys(st.overrides || {}).length ? '<button class="btn" data-act="clearov">Undo all day changes</button>' : ''}</section>
-    <section class="card"><div class="card-h"><span class="ttl">Subject tiers</span><span class="meta">Decides review and drill slots</span></div><div class="tiers">${tiers}</div></section>
-  </div><div class="col">
-    <section class="card"><span class="ttl">Account and sync</span>${acct}</section>
-    <section class="card"><span class="ttl">Backup</span><p class="note">Download everything as a file, or restore from one.</p>
-      <div class="row"><button class="btn" data-act="export">Export JSON</button><label class="btn" for="importfile">Import JSON</label><input id="importfile" type="file" accept="application/json,.json" class="hidden" data-in="import"></div></section>
-    <section class="card"><span class="ttl">Reset</span><p class="note">Deletes all logged days and errors. Settings and tiers stay.</p>
-      ${ui.confirmReset ? '<div class="row"><button class="btn danger" data-act="resetyes">Yes, delete all logs</button><button class="btn" data-act="resetno">Cancel</button></div>' : '<button class="btn danger" data-act="reset" style="align-self:flex-start">Reset logs</button>'}</section>
-  </div></div>`;
+  <div class="settings">
+    <div class="col">
+      <section class="card"><span class="ttl">Appearance</span>
+        <div class="srow"><div class="sl"><span class="lbl">Theme</span><span>Saved on this device</span></div>
+          <div class="segk sm" role="radiogroup" aria-label="Theme">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" data-in="themeset" ${tp === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></div>
+      </section>
+      <section class="card"><span class="ttl">Exam</span>
+        ${row('examDate', 'Exam date', 'The 7-day taper follows it', 'date', st.examDate)}
+        ${row('examTime', 'Start time', 'Used by the countdown', 'time', st.examTime || '08:00')}
+      </section>
+      <section class="card"><span class="ttl">Phases</span>
+        ${row('materialEnd', 'Lectures end', 'Practice-only after this', 'date', st.materialEnd)}
+        ${row('ramadanStart', 'Ramadan starts', 'Days switch to ~6 h', 'date', st.ramadanStart)}
+        ${row('ramadanEnd', 'Ramadan ends', '', 'date', st.ramadanEnd)}
+      </section>
+      <section class="card"><span class="ttl">Targets</span>
+        ${row('toQuestions', 'TO questions', '', 'number', st.toQuestions, 'inputmode="numeric" min="1"')}
+        ${row('toMinutes', 'TO minutes', '', 'number', st.toMinutes, 'inputmode="numeric" min="1"')}
+        ${row('ankiTarget', 'Anki per day', 'Full study days', 'number', st.ankiTarget, 'inputmode="numeric" min="0"')}
+        <p class="meta" style="margin:0">${P.length} days · ${c.lecture || 0} lecture · ${c.practice || 0} practice · ${c.review || 0} review · ${c.to || 0} TO · ${c.drill || 0} drill · ${c.light || 0} light</p>
+        ${Object.keys(st.overrides || {}).length ? '<button class="btn" data-act="clearov" style="align-self:flex-start">Undo all day changes</button>' : ''}
+      </section>
+    </div>
+    <div class="col">
+      <section class="card"><div class="card-h"><span class="ttl">Subject tiers</span><span class="meta">You can also change these on Today and Stats</span></div>${groups}</section>
+      <section class="card"><span class="ttl">Account and sync</span>${acct}</section>
+      <section class="card"><span class="ttl">Backup</span>
+        <div class="srow"><div class="sl"><span class="lbl">Your data as a file</span><span>Download or restore everything</span></div>
+          <div class="btns"><button class="btn" data-act="export">Export</button><label class="btn" for="importfile">Import</label><input id="importfile" type="file" accept="application/json,.json" class="hidden" data-in="import"></div></div>
+      </section>
+      <section class="card danger-zone"><span class="ttl">Reset</span>
+        <div class="srow"><div class="sl"><span class="lbl">Delete all logs</span><span>Logged days and errors. Settings and tiers stay.</span></div>
+          ${ui.confirmReset ? '<div class="btns"><button class="btn danger" data-act="resetyes">Yes, delete</button><button class="btn" data-act="resetno">Cancel</button></div>' : '<button class="btn danger" data-act="reset">Reset</button>'}</div>
+      </section>
+    </div>
+  </div>`;
 }
 
 // ---------- sign in ----------
@@ -606,7 +725,6 @@ setInterval(() => {
 
 // ---------- events ----------
 const intOrNull = (v) => { const n = parseInt(String(v).replace(/[^\d]/g, ''), 10); return Number.isFinite(n) ? n : null; };
-const draft = (date) => ui.draft[date] || (ui.draft[date] = {});
 
 $app.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]'); if (!el) return;
@@ -627,33 +745,21 @@ $app.addEventListener('click', async (ev) => {
     }
     case 'carrydrop': { const log = store.day(date); writeDay(date, { dropped: { ...(log.dropped || {}), [el.dataset.key]: true } }); toast('Dropped from carry-over.'); break; }
     case 'energy': { const v = +el.dataset.v; writeDay(date, { energy: +store.day(date).energy === v ? null : v }); break; }
-    case 'draft': { const d = draft(date); const k = el.dataset.k, v = el.dataset.v; if (k === 'kind' && v !== d.kind) { d.q = ''; d.c = ''; } d[k] = k === 'bank' && d.bank === v ? '' : v; render(); break; }
     case 'logfor': {
-      const d = draft(date); d.kind = el.dataset.kind; if (el.dataset.subj) d.subj = el.dataset.subj;
-      render(); const card = document.getElementById('logcard'); if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); const q = document.getElementById(`q-${date}`); if (q) setTimeout(() => q.focus(), 300); }
+      const pref = { kind: el.dataset.kind, subj: el.dataset.subj || undefined };
+      if (window.innerWidth < 900) { ui.sheet = { date, ...pref }; render(); focusSheet(); break; }
+      ui.pref[date] = pref; render();
+      const card = document.getElementById('logcard');
+      if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); const q = card.querySelector('input[name="c"]'); if (q) setTimeout(() => q.focus({ preventScroll: true }), 350); }
       break;
     }
+    case 'sheet': ui.sheet = { date: todayStr() }; render(); focusSheet(); break;
+    case 'sheetclose': ui.sheet = null; render(); break;
+    case 'theme': setTheme(effectiveTheme() === 'dark' ? 'light' : 'dark'); break;
     case 'timer': {
       if (ui.timer && ui.timer.key === el.dataset.key) ui.timer = null;
       else ui.timer = { key: el.dataset.key, end: Date.now() + (+el.dataset.min) * 60000 };
       render(); break;
-    }
-    case 'addset': {
-      const d = draft(date); const day = dayOf(date);
-      const isTO = d.kind === 'to';
-      const q = intOrNull(d.q) ?? (isTO ? st.toQuestions : null); const c = intOrNull(d.c);
-      if (!q || c === null) { toast('Enter the number of questions and how many you got right.'); return; }
-      if (c > q) { toast('Correct can’t be more than the number of questions.'); return; }
-      const choices = day.subjects || [];
-      const subj = isTO ? '' : choices.includes(d.subj) ? d.subj : (d.subjOther || '');
-      const log = store.day(date);
-      const sets = [...S.daySets(log), { kind: isTO ? 'to' : 'set', q, c, subj, bank: d.bank || '' }];
-      const done = { ...(log.done || {}) };
-      const stepKey = isTO ? 'to' : subj ? `q:${subj}` : null;
-      if (stepKey && day.steps.some((s) => s.key === stepKey)) done[stepKey] = true;
-      writeDay(date, { sets, done });
-      ui.draft[date] = { kind: d.kind, subj: d.subj, subjOther: d.subjOther, bank: d.bank, q: '', c: '' };
-      toast(`Saved ${c}/${q} · ${S.pct(c, q)}%`); break;
     }
     case 'delset': { const sets = [...S.daySets(store.day(date))]; sets.splice(+el.dataset.i, 1); writeDay(date, { sets }); break; }
     case 'accept': case 'dismiss': {
@@ -667,7 +773,6 @@ $app.addEventListener('click', async (ev) => {
       }
       store.updateSettings(patch); break;
     }
-    case 'tier': store.updateSettings({ tiers: { ...(st.tiers || {}), [el.dataset.id]: el.dataset.v } }); toast(`${short(el.dataset.id)} → ${TIERS[el.dataset.v]}`); break;
     case 'ovtype': { const ov = { ...(st.overrides || {}) }; ov[date] = { type: el.dataset.v }; store.updateSettings({ overrides: ov }); toast('Day changed.'); break; }
     case 'ovreset': { const ov = { ...(st.overrides || {}) }; delete ov[date]; store.updateSettings({ overrides: ov }); break; }
     case 'clearov': store.updateSettings({ overrides: {} }); toast('Day changes undone.'); break;
@@ -700,13 +805,21 @@ $app.addEventListener('click', async (ev) => {
 
 $app.addEventListener('input', (ev) => {
   const el = ev.target; const k = el.dataset.in; if (!k) return;
-  if (k === 'q' || k === 'c') draft(el.dataset.date)[k] = el.value;
-  else if (k === 'errNote') ui.errDraft.note = el.value;
+  if (k === 'errNote') ui.errDraft.note = el.value;
 });
 $app.addEventListener('change', async (ev) => {
-  const el = ev.target; const k = el.dataset.in; if (!k) return; const date = el.dataset.date;
-  if (k === 'subjOther') draft(date).subjOther = el.value;
-  else if (k === 'anki') { writeDay(date, { anki: intOrNull(el.value) }); el.blur(); }
+  const el = ev.target;
+  const form = el.closest && el.closest('form.logform');
+  if (form) {
+    // Log form: update its look without re-rendering, so typing is never interrupted.
+    if (el.name === 'kind') { form.dataset.kind = el.value; const q = form.querySelector('input[name="q"]'); q.placeholder = el.value === 'to' ? q.dataset.phTo : q.dataset.phSet; }
+    if (el.name === 'subj') form.dataset.other = el.value === '__other' ? '1' : '0';
+    return;
+  }
+  const k = el.dataset.in; if (!k) return; const date = el.dataset.date;
+  if (k === 'tier') { const st = settings(); store.updateSettings({ tiers: { ...(st.tiers || {}), [el.dataset.id]: el.value } }); el.blur(); toast(`${short(el.dataset.id)} → ${TIERS[el.value]}`); return; }
+  if (k === 'themeset') { setTheme(el.value); return; }
+  if (k === 'anki') { writeDay(date, { anki: intOrNull(el.value) }); el.blur(); }
   else if (k === 'backlog') { writeDay(date, { backlog: intOrNull(el.value) }); el.blur(); }
   else if (k === 'errSubj') ui.errDraft.subj = el.value;
   else if (k === 'errCat') ui.errDraft.cat = el.value;
@@ -730,12 +843,38 @@ $app.addEventListener('change', async (ev) => {
 $app.addEventListener('keydown', (ev) => {
   const el = ev.target; if (ev.key !== 'Enter' || !el.dataset) return;
   const k = el.dataset.in;
-  if (k === 'q' || k === 'c') { ev.preventDefault(); el.blur(); const b = $app.querySelector(`[data-act="addset"][data-date="${el.dataset.date}"]`); if (b) b.click(); }
-  else if (k === 'errNote') { ev.preventDefault(); el.blur(); const b = $app.querySelector('[data-act="adderr"]'); if (b) b.click(); }
+  if (k === 'errNote') { ev.preventDefault(); el.blur(); const b = $app.querySelector('[data-act="adderr"]'); if (b) b.click(); }
   else if (k === 'anki' || k === 'backlog') { ev.preventDefault(); el.blur(); }
 });
 
-window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+$app.addEventListener('submit', (ev) => {
+  const f = ev.target; if (!f.matches || !f.matches('form.logform')) return;
+  ev.preventDefault();
+  const st = settings(); const date = f.dataset.date; const day = dayOrFree(date);
+  const fd = new FormData(f);
+  const isTO = fd.get('kind') === 'to';
+  const q = intOrNull(fd.get('q')) ?? (isTO ? st.toQuestions : null); const c = intOrNull(fd.get('c'));
+  if (!q || c === null) { toast('Enter how many questions and how many you got right.'); return; }
+  if (c > q) { toast('Correct can’t be more than the number of questions.'); return; }
+  let subj = isTO ? '' : (fd.get('subj') || '__other');
+  if (subj === '__other') subj = fd.get('subjOther') || '';
+  const bank = fd.get('bank') || '';
+  const log = store.day(date);
+  const sets = [...S.daySets(log), { kind: isTO ? 'to' : 'set', q, c, subj, bank }];
+  const done = { ...(log.done || {}) };
+  const stepKey = isTO ? 'to' : subj ? `q:${subj}` : null;
+  if (stepKey && day.steps.some((x) => x.key === stepKey)) done[stepKey] = true;
+  ui.pref[date] = { kind: isTO ? 'to' : 'set', subj: fd.get('subj') || undefined, subjOther: fd.get('subjOther') || '', bank };
+  f.elements.q.value = ''; f.elements.c.value = '';
+  if (document.activeElement) document.activeElement.blur();
+  if (f.dataset.sheet) ui.sheet = null;
+  writeDay(date, { sets, done });
+  toast(`Saved ${c}/${q} · ${S.pct(c, q)}%${isTO ? ' TO' : ''}`);
+});
+function focusSheet() { setTimeout(() => { const i = document.querySelector('.sheet input[name="c"]'); if (i && window.innerWidth >= 900) i.focus(); }, 60); }
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && ui.sheet) { ui.sheet = null; render(); } });
+
+window.addEventListener('hashchange', () => { window.scrollTo(0, 0); ui.sheet = null; render(); });
 store.subscribe(render);
 
 (async () => {

@@ -1,6 +1,6 @@
-// Offline support: serve the app shell from cache, refresh it in the background.
-// Bump VERSION whenever you change files so phones pick up the update.
-const VERSION = 'ukmppd-v5';
+// Offline support. Network first (so updates show up straight away), cache as fallback.
+// Bump VERSION whenever you change files.
+const VERSION = 'ukmppd-v7';
 const SHELL = [
   './', './index.html', './css/styles.css', './js/app.js', './js/schedule.js', './js/stats.js', './js/store.js', './js/config.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
@@ -17,11 +17,12 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.hostname.endsWith('supabase.co')) return; // never cache API calls
+  const cacheable = url.origin === location.origin || url.hostname.includes('fonts') || url.hostname.includes('jsdelivr');
+  if (!cacheable) return;
   e.respondWith(
-    caches.open(VERSION).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: url.origin === location.origin });
-      const fresh = fetch(req).then((res) => { if (res && res.ok && (url.origin === location.origin || url.hostname.includes('fonts') || url.hostname.includes('jsdelivr'))) cache.put(req, res.clone()); return res; }).catch(() => cached);
-      return cached || fresh;
-    })
+    fetch(req).then((res) => {
+      if (res && res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req, { ignoreSearch: url.origin === location.origin }).then((r) => r || caches.match('./index.html')))
   );
 });

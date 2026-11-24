@@ -70,7 +70,9 @@ In **Authentication → URL Configuration**, set **Site URL** to your GitHub Pag
 
 ## Daily use (under 1 minute of logging)
 - **Steps:** tick each step when it's done. Saving a practice set or TO score ticks its step for you.
-- **Practice:** enter questions and correct, pick the subject, then **Save**. There's an optional timer on practice and TO steps.
+- **Practice / TO:** tap **+ Log** (bottom right, on every screen) or use the log card on Today. Choose Practice set or TO score, enter questions and correct, then **Save**. You can log TOs before 1 Dec too.
+- **Tiers:** tap a tier chip (on Today, Stats or Settings) to switch Priority / Strengthen / Maintain.
+- **Theme:** the moon/sun button switches dark and light mode; Settings → Appearance has Auto. There's an optional timer on practice and TO steps.
 - **Anki:** enter cards done. Only fill in backlog if there is one.
 - **Energy:** tap 1 to 5.
 - **Error log:** one line per miss. Tap **Rewatch** on concepts you still don't get; they appear on that subject's next review day.
