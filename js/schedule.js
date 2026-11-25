@@ -166,6 +166,14 @@ function stepsFor(day, st) {
         S_('mix', 'Mixed questions from the error log', '20–30 Q', 0.75, 'practice'),
         S_('anki', 'Anki · due cards', 'Then stop · rest is part of the plan', 0.5, 'anki'),
       ];
+    case 'qonly': {
+      const per = day.partTime ? '30–40 Q' : '60–80 Q';
+      return [
+        ...day.subjects.map((id) => S_(`q:${id}`, `Practice questions · ${SUBJECT[id].short}`, per, day.partTime ? 0.75 : 1.5, 'practice', { subj: id })),
+        S_('rev', 'Review + error log', 'One-line rule per miss · flag “rewatch” items', day.partTime ? 0.75 : 1, 'review'),
+        S_('anki', 'Anki', day.partTime ? 'Due cards' : `${st.ankiTarget} cards · due first`, day.partTime ? 0.3 : 0.75, 'anki'),
+      ];
+    }
     case 'taper':
       return [
         S_('q', 'Short timed set', `40–60 Q${day.subjects && day.subjects[0] ? ` · ${SUBJECT[day.subjects[0]].short}` : ' · mixed weak areas'}`, 1, 'practice', day.subjects && day.subjects[0] ? { subj: day.subjects[0] } : {}),
@@ -194,9 +202,35 @@ function targetsFor(day, st, f = 1) {
     case 'to': q = [st.toQuestions, st.toQuestions]; break;
     case 'light': q = [20, 30]; break;
     case 'taper': q = [40, 60]; break;
+    case 'qonly': q = day.partTime ? r(day.subjects.length * 30, day.subjects.length * 40) : r(day.subjects.length * 60, day.subjects.length * 80); break;
+    case 'catchup': q = [20, 30 + (day.catchup || []).reduce((n, x) => n + (x.q || 0), 0)]; break;
   }
-  const anki = ['lecture', 'practice', 'review', 'drill'].includes(day.type) && !day.partTime ? st.ankiTarget : 0;
+  const anki = ['lecture', 'practice', 'review', 'drill', 'qonly'].includes(day.type) && !day.partTime ? st.ankiTarget : 0;
   return { q, anki, ankiNote: anki ? 'due first, then new' : 'due cards only' };
+}
+
+function catchupSteps(day, st) {
+  const moved = day.catchup.flatMap((x) => stepsFor(x.content, st).filter((t) => t.kind !== 'anki' && !t.optional).map((t) => ({ ...t, key: `cu:${x.from}:${t.key}`, detail: `Moved from ${label(x.from)}${t.detail ? ' · ' + t.detail : ''}` })));
+  return [...moved, S_('anki', 'Anki · due cards', 'Then stop', 0.5, 'anki')];
+}
+
+// Days you could swap with: same kind of day, within the next 7 days, not already moved.
+export function swapOptions(plan, date) {
+  const D = plan.find((d) => d.date === date);
+  if (!D || D.moved || !['lecture', 'review', 'drill', 'practice'].includes(D.type)) return [];
+  const partDate = (key) => (plan.find((x) => x.lecture && x.lecture.key === key) || {}).date;
+  // A lecture part must stay after its earlier part and before its later part.
+  const inOrder = (L, newDate) => {
+    if (!L) return true;
+    const prev = L.part > 0 ? partDate(`${L.id}#${L.part - 1}`) : null;
+    const next = SUBJECT[L.id].parts.length > L.part + 1 ? partDate(`${L.id}#${L.part + 1}`) : null;
+    return (!prev || prev < newDate) && (!next || next > newDate);
+  };
+  // Don't move a lecture past the practice day that tests it.
+  const practiceBetween = (a, b, ids) => plan.some((x) => x.type === 'practice' && x.date > a && x.date < b && (x.subjects || []).some((id) => ids.includes(id)));
+  return plan.filter((d) => d.date > date && diffDays(date, d.date) <= 7 && d.type === D.type && !d.moved && !d.mode
+    && JSON.stringify(d.subjects) !== JSON.stringify(D.subjects)
+    && (D.type !== 'lecture' || (inOrder(D.lecture, d.date) && inOrder(d.lecture, D.date) && !practiceBetween(D.date, d.date, [...D.subjects, ...d.subjects]))));
 }
 
 // ---------- main generator ----------
@@ -278,11 +312,59 @@ export function buildPlan(settingsIn = {}, ctx = {}) {
   const dpairs = pairUp(Array.from({ length: days.filter((x) => x.type === 'drill').length * 2 }, (_, i) => dq[i % dq.length]));
   days.filter((x) => x.type === 'drill').forEach((day, i) => { day.subjects = dpairs[i]; day.title = `Drill · ${SUBJECT[day.subjects[0]].short} + ${SUBJECT[day.subjects[1]].short}`; });
 
+  // ---------- your changes: swaps (within 7 days) and "change today" modes ----------
+  const byDate = Object.fromEntries(days.map((d) => [d.date, d]));
+  const content = (d) => ({ type: d.type, subjects: (d.subjects || []).slice(), lecture: d.lecture || null, title: d.title, flex: d.flex });
+  (st.swaps || []).forEach(({ a, b }) => {
+    const A = byDate[a], B = byDate[b]; if (!A || !B) return;
+    const ca = content(A), cb = content(B);
+    Object.assign(A, cb, { moved: { from: b } }); Object.assign(B, ca, { moved: { from: a } });
+  });
+  const modes = st.modes || {};
+  const buffers = {};
+  Object.keys(modes).sort().forEach((date) => {
+    const D = byDate[date]; const m = modes[date];
+    if (!D || !m || ['exam', 'eve', 'taper'].includes(D.type)) return;
+    const orig = content(D);
+    if (m.mode === 'to') Object.assign(D, { type: 'to', subjects: [], lecture: null, title: 'Full TO + review' });
+    else if (m.mode === 'questions') {
+      const subs = (m.subj ? [m.subj] : orig.subjects.length ? orig.subjects.slice(0, 2) : [weakest[0] || 'CARD']).filter((x, i, a) => a.indexOf(x) === i);
+      Object.assign(D, { type: 'qonly', subjects: subs, lecture: null, title: `Questions · ${subs.map((x) => SUBJECT[x].short).join(' + ')}` });
+    } else if (m.mode === 'light') Object.assign(D, { type: 'light', subjects: [], lecture: null, title: 'Light day · recap + rest' });
+    else return;
+    D.mode = m.mode; D.modeFrom = orig;
+    if (orig.type === 'light' || orig.type === m.mode || (orig.type === 'to' && m.mode === 'to')) return;
+    // The planned work moves to the next Sunday buffer before the taper.
+    let buf = null;
+    for (let x = addDays(date, 1); x < taperStart; x = addDays(x, 1)) { if (dow(x) === 0 && byDate[x] && byDate[x].type === 'light' && !modes[x]) { buf = x; break; } }
+    if (!buf) { D.displacedTo = null; return; }
+    D.displacedTo = buf;
+    let moving = orig;
+    // Keep lecture parts in order: if a later part of the same subject comes before the buffer,
+    // it shifts one slot later and the last part is the one that goes to Sunday.
+    if (orig.lecture) {
+      const later = days.filter((x) => x.date > date && x.date < buf && x.type === 'lecture' && x.lecture && x.lecture.id === orig.lecture.id);
+      if (later.length) {
+        const chain = [orig.lecture, ...later.map((x) => x.lecture)];
+        later.forEach((x, i) => { x.lecture = chain[i]; x.title = `Lecture · ${SUBJECT[x.lecture.id].name}${SUBJECT[x.lecture.id].parts.length > 1 ? ` part ${x.lecture.part + 1}` : ''}`; });
+        const last = chain[chain.length - 1];
+        moving = { ...orig, lecture: last, title: `Lecture · ${SUBJECT[last.id].name} part ${last.part + 1}` };
+      }
+    }
+    (buffers[buf] || (buffers[buf] = [])).push({ from: date, content: { ...moving, date, partTime: D.partTime, ramadan: D.ramadan, phase: D.phase } });
+  });
+  Object.entries(buffers).forEach(([date, list]) => {
+    const B = byDate[date];
+    B.type = 'catchup'; B.catchup = list;
+    B.subjects = [...new Set(list.flatMap((x) => x.content.subjects || []))];
+    B.title = `Catch-up · ${list.map((x) => (x.content.lecture ? `${SUBJECT[x.content.lecture.id].short} lecture` : x.content.type === 'to' ? 'TO' : (x.content.subjects || []).map((y) => SUBJECT[y].short).join(' + ') || TYPE_LABEL[x.content.type])).join(', ')}`;
+  });
+
   // Apply per-day overrides (Phase 2 type/subject changes, target factors) and build steps.
   let extraDrill = 0;
   days.forEach((day) => {
     const ov = overrides[day.date] || {};
-    if (ov.type && ov.type !== day.type && day.phase === 'Phase 2') {
+    if (ov.type && ov.type !== day.type && day.phase === 'Phase 2' && !day.mode && !day.moved && day.type !== 'catchup') {
       day.type = ov.type;
       if (ov.type === 'to') { day.title = 'Full TO + review'; day.subjects = []; }
       if (ov.type === 'light') { day.title = 'Light day · recap + rest'; day.subjects = []; }
@@ -291,20 +373,20 @@ export function buildPlan(settingsIn = {}, ctx = {}) {
     if ((day.type === 'drill' || day.type === 'review') && (ov.s1 || ov.s2)) day.subjects = [ov.s1 || day.subjects[0], ov.s2 || day.subjects[1]];
     if (day.type === 'drill') day.title = `Drill · ${SUBJECT[day.subjects[0]].short} + ${SUBJECT[day.subjects[1]].short}`;
     if (day.type === 'review') day.title = `Review · ${SUBJECT[day.subjects[0]].short} + ${SUBJECT[day.subjects[1]].short}`;
-    day.steps = stepsFor(day, st);
+    day.steps = day.type === 'catchup' ? catchupSteps(day, st) : stepsFor(day, st);
     day.hours = day.steps.filter((s) => !s.optional).reduce((n, s) => n + s.hours, 0);
     day.targets = targetsFor(day, st, ov.qFactor || 1);
   });
   return days;
 }
 
-export const TYPE_LABEL = { lecture: 'Lecture day', practice: 'Practice day', review: 'Review day', to: 'TO day', drill: 'Drill day', light: 'Light day', taper: 'Taper', eve: 'Exam eve', exam: 'Exam' };
+export const TYPE_LABEL = { lecture: 'Lecture day', practice: 'Practice day', review: 'Review day', to: 'TO day', drill: 'Drill day', light: 'Light day', qonly: 'Questions day', catchup: 'Catch-up day', taper: 'Taper', eve: 'Exam eve', exam: 'Exam' };
 
 // Past days keep what was planned when you logged them (tier changes don't rewrite history).
 export function snapshotOf(day) { return { type: day.type, subjects: day.subjects || [], lecture: day.lecture || null, title: day.title }; }
 export function materialize(planDay, log, settingsIn = {}) {
   const snap = log && log.snap;
-  if (!snap || (snap.type === planDay.type && JSON.stringify(snap.subjects || []) === JSON.stringify(planDay.subjects || []))) return planDay;
+  if (!snap || planDay.type === 'catchup' || (snap.type === planDay.type && JSON.stringify(snap.subjects || []) === JSON.stringify(planDay.subjects || []))) return planDay;
   const st = { ...DEFAULT_SETTINGS, ...settingsIn };
   const day = { ...planDay, type: snap.type, subjects: snap.subjects || [], lecture: snap.lecture || planDay.lecture, title: snap.title || planDay.title };
   day.steps = stepsFor(day, st);

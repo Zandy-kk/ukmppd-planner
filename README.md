@@ -78,6 +78,13 @@ In **Authentication → URL Configuration**, set **Site URL** to your GitHub Pag
 - **Error log:** one line per miss. Tap **Rewatch** on concepts you still don't get; they appear on that subject's next review day.
 - **Sundays:** read the weekly recap and pick next week's repair targets.
 
+## Changing a day (Not feeling today's plan?)
+- **Swap subject:** swap today with a day of the same kind in the next 7 days. The app suggests the best options (weakest, Priority, soonest). The subject you moved is then **locked** on its new day so it can't slip again. Lecture parts always stay in order. Swapping turns off once you've ticked a step on that day (so ticks never land on the wrong subject).
+- **Just a TO today / Questions only / Light day:** today's planned work moves to the next **Sunday**, which becomes a catch-up day.
+- **Undo** is always available on the changed day.
+- **Week goals** (lecture parts, questions, TOs) sit next to "The road to CBT" on Today and warn you when lectures fall behind.
+- On TO days the review time adjusts to your score (about 1.5–2 min per miss).
+
 ## Suggestions (you decide)
 The app checks your numbers and suggests changes. Nothing changes until you tap **Accept**.
 

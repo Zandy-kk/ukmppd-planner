@@ -45,17 +45,40 @@ export function weakestIds(logs, tiers) {
 }
 
 // ---------- lecture progress ----------
-export function lectureProgress(plan, logs) {
+export function lectureProgress(plan, logs, materialize) {
   const done = new Set();
-  Object.values(logs).forEach((l) => { if (l && l.lec && l.done && l.done.lec) done.add(l.lec); });
+  const when = {};
+  plan.forEach((pd) => {
+    const log = logs[pd.date] || {};
+    const d = materialize ? materialize(pd, log) : pd;
+    d.steps.forEach((s) => { if (s.lecture) { when[s.lecture] = when[s.lecture] || pd.date; if (isDone(log, s.key)) done.add(s.lecture); } });
+    if (log.lec && log.done && log.done.lec) done.add(log.lec);
+  });
   const bySubj = {};
   LECTURE_PARTS.forEach((p) => {
     const b = bySubj[p.id] || (bySubj[p.id] = { id: p.id, parts: [], done: 0 });
     const d = done.has(p.key);
-    b.parts.push({ ...p, done: d, date: (plan.find((x) => x.lecture && x.lecture.key === p.key) || {}).date });
+    b.parts.push({ ...p, done: d, date: when[p.key] });
     if (d) b.done++;
   });
-  return { bySubj, done: done.size, total: LECTURE_PARTS.length, hoursDone: LECTURE_PARTS.filter((p) => done.has(p.key)).reduce((n, p) => n + p.hours, 0), hoursTotal: LECTURE_PARTS.reduce((n, p) => n + p.hours, 0) };
+  return { bySubj, done: done.size, total: LECTURE_PARTS.length, when, isDone: (k) => done.has(k), hoursDone: LECTURE_PARTS.filter((p) => done.has(p.key)).reduce((n, p) => n + p.hours, 0), hoursTotal: LECTURE_PARTS.reduce((n, p) => n + p.hours, 0) };
+}
+
+// ---------- week goals ----------
+export function weekGoals(plan, logs, today, materialize) {
+  const ws = weekStart(today), we = addDays(ws, 6);
+  const lp = lectureProgress(plan, logs, materialize);
+  let lecPlanned = 0, lecDone = 0, qPlanned = 0, q = 0, toPlanned = 0, tos = 0;
+  plan.filter((d) => d.date >= ws && d.date <= we).forEach((pd) => {
+    const log = logs[pd.date] || {}; const d = materialize(pd, log);
+    d.steps.forEach((s) => { if (s.lecture) { lecPlanned++; if (lp.isDone(s.lecture)) lecDone++; } });
+    if (d.type === 'to') toPlanned++;
+    qPlanned += Math.round(((d.targets.q[0] || 0) + (d.targets.q[1] || 0)) / 2);
+    daySets(log).forEach((s) => { q += +s.q || 0; if (s.kind === 'to') tos++; });
+  });
+  // lecture parts whose day has passed but that aren't watched yet
+  const behind = LECTURE_PARTS.filter((p) => lp.when[p.key] && lp.when[p.key] < today && !lp.isDone(p.key)).length; // only shown on the real Today
+  return { ws, we, lecPlanned, lecDone, qPlanned, q, toPlanned, tos, behind };
 }
 
 // ---------- carry-over: unfinished important steps from the last 14 days ----------

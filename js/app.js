@@ -1,4 +1,4 @@
-import { buildPlan, materialize as mat, snapshotOf, SUBJECT, SUBJECTS, TIERS, tierOf, partLabel, label, monthName, addDays, diffDays, weekStart, parse, fmtH, TYPE_LABEL, DEFAULT_SETTINGS } from './schedule.js';
+import { buildPlan, swapOptions, materialize as mat, snapshotOf, SUBJECT, SUBJECTS, TIERS, tierOf, partLabel, label, monthName, addDays, diffDays, weekStart, parse, fmtH, TYPE_LABEL, DEFAULT_SETTINGS } from './schedule.js';
 import { store } from './store.js';
 import * as S from './stats.js';
 
@@ -64,7 +64,7 @@ const effectiveTheme = () => { const p = themePref(); return p === 'auto' ? (dar
 function applyTheme() {
   const p = themePref(); const root = document.documentElement;
   if (p === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', p);
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', effectiveTheme() === 'dark' ? '#14171F' : '#EEE8DE');
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', effectiveTheme() === 'dark' ? '#1C1411' : '#F7EFEC');
 }
 function setTheme(v) { try { localStorage.setItem(THEME_KEY, v); } catch {} applyTheme(); render(); }
 if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', () => { applyTheme(); render(); });
@@ -73,6 +73,8 @@ applyTheme();
 // A day outside the plan (e.g. before 1 Dec): you can still log TOs and sets on it.
 function freeDay(date) { return { date, type: 'free', phase: '', subjects: [], steps: [], hours: 0, targets: { q: [0, 0], anki: 0, ankiNote: 'due cards' } }; }
 const dayOrFree = (date) => dayOf(date) || freeDay(date);
+// After a swap or change, forget the stored snapshot so the day shows its new plan.
+function clearSnaps(dates) { dates.forEach((d) => { const l = store.day(d); if (l && l.snap) store.updateDay(d, { snap: null }); }); }
 let toastTimer = null;
 function toast(msg) {
   let t = document.querySelector('.toast');
@@ -156,7 +158,7 @@ function tierSelect(id, withName = false) {
 }
 const tierChip = (id) => { const t = tierOf(id, settings().tiers); return `<span class="chip ${t}"><i></i>${TIERS[t]}</span>`; };
 const accCls = (a) => (a === null || a === undefined ? '' : a >= 85 ? 'good' : a >= 70 ? 'warnc' : 'bad');
-const typeDot = (d) => ({ lecture: 'var(--accent)', practice: 'var(--mai-dot)', review: 'var(--plum)', to: 'var(--accent-ink)', drill: 'var(--str-dot)', light: 'var(--line2)', taper: 'var(--pri-dot)', eve: 'var(--pri-dot)', exam: 'var(--pri)' }[d.type]);
+const typeDot = (d) => ({ lecture: 'var(--rose)', practice: 'var(--str-dot)', review: 'var(--accent)', to: 'var(--ebony)', drill: 'var(--str-dot)', qonly: 'var(--str-dot)', catchup: 'var(--coffee)', light: 'var(--line2)', taper: 'var(--accent)', eve: 'var(--accent)', exam: 'var(--coffee)' }[d.type]);
 const short = (id) => (SUBJECT[id] ? SUBJECT[id].short : id);
 const code = (id) => (SUBJECT[id] ? SUBJECT[id].code : id);
 function dayCode(d) {
@@ -165,6 +167,8 @@ function dayCode(d) {
     case 'practice': return 'Practice';
     case 'review': case 'drill': return `${esc(code(d.subjects[0]))}<br>${esc(code(d.subjects[1]))}`;
     case 'to': return 'TO';
+    case 'qonly': return `Q · ${esc((d.subjects || []).map(code).join('+'))}`;
+    case 'catchup': return 'Catch-up';
     case 'light': return 'Light';
     case 'taper': return d.subjects && d.subjects[0] ? esc(code(d.subjects[0])) : 'Mixed';
     case 'eve': return 'Eve';
@@ -191,6 +195,8 @@ function viewDay(date, isToday) {
   const heading = day.type === 'lecture' ? SUBJECT[day.lecture.id].name + (SUBJECT[day.lecture.id].parts.length > 1 ? ` · part ${day.lecture.part + 1}` : '')
     : day.type === 'review' || day.type === 'drill' ? `${short(day.subjects[0])} + ${short(day.subjects[1])}`
     : day.type === 'practice' ? (day.subjects.length ? `Practice · ${day.subjects.map(short).join(', ')}` : 'Practice + catch-up')
+    : day.type === 'qonly' ? `Questions · ${day.subjects.map(short).join(' + ')}`
+    : day.type === 'catchup' ? 'Catch-up day'
     : day.type === 'to' ? 'Full try-out' : day.type === 'light' ? 'Light day' : day.type === 'taper' ? (day.subjects[0] ? `Taper · ${short(day.subjects[0])}` : 'Taper · mixed') : day.type === 'eve' ? 'Exam eve' : 'Exam day';
   const uniq = [...new Set(day.subjects || [])];
   const tiers = uniq.map((id) => tierSelect(id, uniq.length > 1)).join('');
@@ -207,7 +213,7 @@ function viewDay(date, isToday) {
   const realToday = freeDay(todayStr());
   const logArea = preview ? logCard(realToday, store.day(realToday.date), `Log for today · ${label(realToday.date)}`) + checkinCard(realToday, store.day(realToday.date))
     : day.type === 'exam' ? '' : logCard(day, log) + checkinCard(day, log);
-  const side = (live ? suggestionCards() : '') + logArea + (!isToday ? changeDayCard(day) : '') + monthCard(date);
+  const side = (live ? suggestionCards() : '') + (preview ? '' : changeDayCard(day, live)) + logArea + monthCard(date);
   return `${hero}${banner}${journeyCard(live ? todayStr() : date)}<div class="grid"><div class="col">${main}</div><aside class="col" aria-label="Log and week">${side}</aside></div>`;
 }
 
@@ -219,9 +225,14 @@ function planCard(day, log, live) {
   const pctDone = day.hours ? Math.min(100, Math.round((h / day.hours) * 100)) : 0;
   const nowKey = live ? (day.steps.find((s) => !S.isDone(log, s.key) && !s.optional) || {}).key : null;
   const errs = store.errors();
-  const rows = day.steps.map((s) => {
+  const rows = day.steps.map((s0) => {
+    let s = s0;
     const done = S.isDone(log, s.key);
     let extra = '';
+    if (s.key === 'torev' || /:torev$/.test(s.key)) {
+      const to = S.daySets(log).filter((x) => x.kind === 'to').pop();
+      if (to) { const miss = Math.max(0, to.q - to.c); s = { ...s, hours: Math.max(0.5, Math.round((miss * 1.75 + 15) / 15) * 0.25), detail: `${miss} misses to review · about 1.5–2 min each, plus your guesses` }; }
+    }
     if (s.kind === 'rewatch') {
       const items = errs.filter((e) => e.rewatch && !e.closed && e.subj === s.subj);
       extra = items.length ? `<ul class="rw">${items.slice(0, 4).map((e) => `<li>${esc(e.note)}</li>`).join('')}${items.length > 4 ? `<li>+${items.length - 4} more in Errors</li>` : ''}</ul>` : '<div class="sd">No flagged items yet. Skim the lecture chapters you found hardest.</div>';
@@ -367,12 +378,29 @@ function journeyCard(ref) {
   segs.forEach((s, i) => { s.to = i < segs.length - 1 ? segs[i + 1].from : N; });
   const cur = segs.find((s) => idx >= s.from && idx < s.to) || segs[0];
   const pctPos = ((idx + 0.5) / N) * 100;
-  return `<section class="card journey-card" aria-label="Journey">
+  return `<section class="card journey-card" aria-label="Journey and week goals"><div class="jl">
     <div class="card-h"><span class="ttl">The road to CBT</span><span class="meta">Day ${idx + 1} of ${N} · ${Math.round(((idx + 1) / N) * 100)}% of the way</span></div>
     <div class="journey"><div class="jbar">${segs.map((s) => `<i class="${s.cls} ${s === cur ? 'on' : ''}" style="flex:${s.to - s.from}"></i>`).join('')}</div>
       <span class="jmark" style="left:${pctPos}%"></span></div>
     <div class="jlab">${segs.map((s) => `<span class="${s === cur ? 'on' : ''}"><i class="${s.cls}"></i>${s.name}<em>${label(P[s.from].date).replace(/^\w+ /, '')} – ${label(P[s.to - 1].date).replace(/^\w+ /, '')}</em></span>`).join('')}</div>
+    </div>${goalsHTML(ref)}
   </section>`;
+}
+
+function ring(v, max, lbl, sub) {
+  const pct = max ? Math.min(1, v / max) : 0; const C = 2 * Math.PI * 20;
+  return `<div class="goal"><svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true"><circle cx="24" cy="24" r="20" class="rt"/><circle cx="24" cy="24" r="20" class="rv ${pct >= 1 ? 'full' : ''}" stroke-dasharray="${(C * pct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 24 24)"/></svg>
+    <div><b>${v}<small> / ${max}</small></b><span>${lbl}</span>${sub ? `<em>${sub}</em>` : ''}</div></div>`;
+}
+function goalsHTML(ref) {
+  const g = S.weekGoals(plan(), store.allDays(), ref, materialize);
+  const items = [];
+  if (g.lecPlanned) items.push(ring(g.lecDone, g.lecPlanned, 'lecture parts'));
+  items.push(ring(g.q, g.qPlanned, 'questions'));
+  if (g.toPlanned) items.push(ring(g.tos, g.toPlanned, g.toPlanned > 1 ? 'TOs' : 'TO'));
+  const buf = nextBuffer(addDays(ref, -1));
+  const warn = g.behind && ref === todayStr() ? `<div class="behind">${g.behind} lecture part${g.behind > 1 ? 's' : ''} behind${buf ? ` · use ${label(buf)} to catch up` : ''}</div>` : '';
+  return `<div class="goals"><div class="eyebrow">Week goals · ${label(g.ws)} – ${label(g.we)}</div><div class="grow3">${items.join('')}</div>${warn}</div>`;
 }
 
 function weekCard(date, live) {
@@ -416,7 +444,7 @@ function monthCard(date) {
     cells += `<a class="mc t-${d.type} ${dt === today ? 'today' : ''} ${dt === date ? 'sel' : ''}" href="#day/${dt}" aria-label="${label(dt)}: ${esc(d.title)}">${n}${ok ? '<i></i>' : ''}</a>`;
   }
   const sum = [['lecture', 'lecture'], ['practice', 'practice'], ['review', 'review'], ['to', 'TO'], ['drill', 'drill'], ['taper', 'taper']].filter(([k]) => counts[k]).map(([k, l]) => `${counts[k]} ${l}`).join(' · ');
-  return `<section class="card" aria-label="This month"><div class="card-h"><span class="ttl">${monthName(mo - 1)}</span><a class="meta" href="#cal">Full calendar →</a></div>
+  return `<section class="card" aria-label="This month"><div class="card-h"><span class="ttl">${monthName(mo - 1)}</span><a class="more-link" href="#cal">Full calendar →</a></div>
     <div class="mini-cal">${cells}</div><div class="meta">${sum}</div></section>`;
 }
 
@@ -498,13 +526,70 @@ function suggestionCards() {
     <div class="row"><button class="btn p" data-act="accept" data-key="${esc(s.key)}">${s.accept.kind === 'ack' ? 'Got it' : 'Accept'}</button>${s.accept.kind === 'ack' ? '' : `<button class="btn" data-act="dismiss" data-key="${esc(s.key)}">Not now</button>`}</div></section>`).join('');
 }
 
-function changeDayCard(day) {
-  if (!['to', 'drill', 'light'].includes(day.type) || day.phase !== 'Phase 2' || day.date < todayStr()) return '';
-  const ov = (settings().overrides || {})[day.date];
-  const sel = day.type === 'drill' ? ['s1', 's2'].map((k, i) => `<div class="f"><label for="${k}-${day.date}">Drill subject ${i + 1}</label><select id="${k}-${day.date}" data-in="ov-${k}" data-date="${day.date}">${SUBJECTS.map((s) => `<option value="${s.id}" ${day.subjects[i] === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>`).join('') : '';
-  return `<section class="card" aria-label="Change this day"><span class="ttl">Change this day</span>
-    <div class="pills">${[['to', 'TO day'], ['drill', 'Drill day'], ['light', 'Light']].map(([t, l]) => `<button class="pill ${day.type === t ? 'on' : ''}" data-act="ovtype" data-date="${day.date}" data-v="${t}">${l}</button>`).join('')}</div>
-    ${sel}${ov ? `<button class="btn" data-act="ovreset" data-date="${day.date}">Reset to the original plan</button>` : ''}</section>`;
+function nextBuffer(date) {
+  const P = plan(); const exam = settings().examDate; const taper = addDays(exam, -6);
+  const d = P.find((x) => x.date > date && x.date < taper && parse(x.date).getUTCDay() === 0 && (x.type === 'light' || x.type === 'catchup'));
+  return d ? d.date : null;
+}
+function changeDayCard(day, live) {
+  const today = todayStr();
+  if (day.date < today || ['exam', 'eve', 'taper', 'catchup'].includes(day.type)) return '';
+  const st = settings();
+  const head = `<div class="card-h"><span class="ttl">${live ? 'Not feeling today’s plan?' : 'Change this day'}</span></div>`;
+  // Already changed: show what happened + undo.
+  if (day.mode) {
+    const to = day.displacedTo ? `The original plan (${esc(day.modeFrom.title)}) moved to <b>${label(day.displacedTo)}</b>.` : 'The original plan stays in Carried over until you clear it.';
+    return `<section class="card change" aria-label="Change this day">${head}
+      <p class="note">Changed to <b>${esc(TYPE_LABEL[day.type])}</b>. ${to}</p>
+      <button class="btn" data-act="unmode" data-date="${day.date}" style="align-self:flex-start">Undo, go back to the plan</button></section>`;
+  }
+  const buf = nextBuffer(day.date);
+  const bufDay = buf ? dayOf(buf) : null;
+  const already = bufDay && bufDay.type === 'catchup' ? ` (already ~${fmtH(bufDay.hours)} there)` : '';
+  const moves = buf ? `${live ? 'today’s' : 'this day’s'} plan moves to ${label(buf)}${already}` : 'the plan goes to Carried over';
+  // swap candidates, ranked
+  let swapHTML = '';
+  if (day.moved) {
+    swapHTML = `<div class="lock"><b>Moved here from ${label(day.moved.from)}</b> · locked so it doesn’t slip again.<button class="linkbtn" data-act="unswap" data-date="${day.date}">Undo swap</button></div>`;
+  } else if (day.steps.some((x) => S.isDone(store.day(day.date), x.key))) {
+    swapHTML = '<p class="meta" style="margin:0">You’ve already started this day, so swapping is off. Untick its steps if you want to swap.</p>';
+  } else {
+    const logs = store.allDays();
+    const opts = swapOptions(plan(), day.date).filter((o) => !Object.values((logs[o.date] || {}).done || {}).some(Boolean));
+    if (opts.length) {
+      const stats = Object.fromEntries(S.subjectStats(store.allDays(), st.tiers).map((x) => [x.id, x]));
+      const scored = opts.map((o) => {
+        const id = o.subjects[0]; const sx = stats[id] || {}; const why = [];
+        let score = 0;
+        if (sx.rolling !== null && sx.rolling !== undefined) { score += (100 - sx.rolling); if (sx.rolling < 75) why.push(`weak now · ${Math.round(sx.rolling)}%`); }
+        if (tierOf(id, st.tiers) === 'P') { score += 15; why.push('Priority'); }
+        score += (8 - diffDays(day.date, o.date)) * 3;
+        if (o === opts[0]) why.push('soonest');
+        return { o, score, why };
+      }).sort((x, y) => y.score - x.score);
+      const btn = ({ o, why }) => `<button class="choice" data-act="swap" data-a="${day.date}" data-b="${o.date}"><span><b>${esc(dayName(o))}</b><em>${label(o.date)}${why.length ? ' · ' + why.join(' · ') : ''}</em></span><i>Swap</i></button>`;
+      const top = scored.slice(0, 3).map(btn).join('');
+      const rest = scored.slice(3).map(btn).join('');
+      swapHTML = `<div class="choices">${top}</div>${rest ? `<details><summary>Show ${scored.length - 3} more</summary><div class="choices" style="margin-top:8px">${rest}</div></details>` : ''}
+        <p class="meta" style="margin:0">${esc(dayName(day))} takes that day instead, then it’s locked there.</p>`;
+    } else if (['lecture', 'review', 'drill', 'practice'].includes(day.type)) {
+      swapHTML = '<p class="meta" style="margin:0">No day in the next week can swap with this one.</p>';
+    }
+  }
+  const prevTO = [1, 2].every((i) => { const d = dayOf(addDays(day.date, -i)); return d && d.type === 'to'; });
+  const toNote = day.type === 'to' ? '' : `<button class="choice" data-act="mode" data-date="${day.date}" data-v="to"><span><b>Just a TO today</b><em>TO + review${day.partTime ? ' · long day, about 5–6 h' : ''} · ${moves}${prevTO ? ' · ⚠ 3 TOs in a row' : ''}</em></span><i>Do it</i></button>`;
+  const qSel = `<select class="minisel" data-in="modesubj" aria-label="Subject for questions only">${SUBJECTS.map((x) => `<option value="${x.id}" ${(ui.modeSubj || (day.subjects || [])[0]) === x.id ? 'selected' : ''}>${esc(x.short)}</option>`).join('')}</select>`;
+  const qOpt = day.type === 'qonly' ? '' : `<div class="choice as-div"><span><b>Questions only</b><em>No lecture · ${moves}</em></span>${qSel}<button class="mini-go" data-act="mode" data-date="${day.date}" data-v="questions">Do it</button></div>`;
+  const light = day.type === 'light' ? '' : `<button class="choice" data-act="mode" data-date="${day.date}" data-v="light"><span><b>Light day</b><em>Anki, daily recall, 20–30 Q · ${moves}</em></span><i>Do it</i></button>`;
+  return `<section class="card change" aria-label="Change this day">${head}
+    ${swapHTML ? `<div><div class="eyebrow" style="margin-bottom:8px">Swap subject</div>${swapHTML}</div>` : ''}
+    <div><div class="eyebrow" style="margin-bottom:8px">Or change the day</div><div class="choices">${toNote}${qOpt}${light}</div></div>
+  </section>`;
+}
+function dayName(d) {
+  if (d.type === 'lecture') return `${SUBJECT[d.lecture.id].short}${SUBJECT[d.lecture.id].parts.length > 1 ? ' ' + (d.lecture.part + 1) : ''} lecture`;
+  if (d.subjects && d.subjects.length) return d.subjects.map(short).join(' + ');
+  return TYPE_LABEL[d.type];
 }
 
 function viewAfter() {
@@ -528,7 +613,7 @@ function viewCalendar() {
       if (!pd) { cells += `<div class="cell empty"><span class="n">${n}</span></div>`; continue; }
       const lg = logs[date] || {}; const d = materialize(pd, lg);
       const ok = lg.done && Object.values(lg.done).some(Boolean);
-      cells += `<a class="cell t-${d.type} ${date === today ? 'today' : ''} ${date < today ? 'past' : ''}" href="#day/${date}" aria-label="${label(date)}: ${esc(d.title)}"><span class="n">${n}</span><span class="c">${dayCode(d)}</span>${ok ? '<span class="ok" aria-hidden="true"></span>' : ''}</a>`;
+      cells += `<a class="cell t-${d.type} ${date === today ? 'today' : ''} ${date < today ? 'past' : ''}" href="#day/${date}" aria-label="${label(date)}: ${esc(d.title)}"><span class="n">${n}</span><span class="c">${dayCode(d)}</span>${ok ? '<span class="ok" aria-hidden="true"></span>' : ''}${d.moved || d.mode ? '<span class="mv" aria-hidden="true">↔</span>' : ''}</a>`;
     }
     return `<section class="card"><span class="ttl">${monthName(mo - 1)} ${y}</span><div class="cal">${cells}</div></section>`;
   }).join('');
@@ -546,7 +631,7 @@ function viewStats() {
   const all = S.allSets(logs).filter((s) => s.kind !== 'to');
   const totQ = all.reduce((n, s) => n + (+s.q || 0), 0), totC = all.reduce((n, s) => n + (+s.c || 0), 0);
   const tos = S.toResults(logs);
-  const lp = S.lectureProgress(P, logs);
+  const lp = S.lectureProgress(P, logs, materialize);
   const subj = S.subjectStats(logs, st.tiers).sort((a, b) => (a.rolling ?? a.acc ?? 101) - (b.rolling ?? b.acc ?? 101));
   const errs = store.errors();
 
@@ -627,7 +712,7 @@ function viewErrors() {
       <button class="x" data-act="errdel" data-id="${e.id}" aria-label="Delete">${I.x}</button></div>`).join('')
     : `<div class="empty">${all.length ? 'Nothing matches this filter.' : 'No misses logged yet. Add one line per miss: the rule that would have got it right.'}</div>`;
   return `<section class="hero"><div><div class="eyebrow">Error log</div><h1 class="h1">${open} open</h1><div class="chips"><span class="chip">${all.length - open} understood</span><span class="chip" style="background:var(--plum-bg);color:var(--plum)">${rw} to rewatch</span></div></div></section>
-    <div class="grid"><div class="col"><section class="card" style="gap:10px">${filters}<div>${items}</div></section></div><aside class="col">${form}</aside></div>`;
+    <div class="grid errors-page"><div class="col"><section class="card" style="gap:10px">${filters}<div>${items}</div></section></div><aside class="col">${form}</aside></div>`;
 }
 
 // ---------- Settings ----------
@@ -755,6 +840,30 @@ $app.addEventListener('click', async (ev) => {
     }
     case 'sheet': ui.sheet = { date: todayStr() }; render(); focusSheet(); break;
     case 'sheetclose': ui.sheet = null; render(); break;
+    case 'swap': {
+      const a = el.dataset.a, b = el.dataset.b; const before = dayOf(a);
+      const swaps = [...(st.swaps || []), { a, b }];
+      const skips = { ...(st.skips || {}) }; (before.subjects || []).forEach((id) => { skips[id] = (skips[id] || 0) + 1; });
+      clearSnaps([a, b]); store.updateSettings({ swaps, skips });
+      toast(`Swapped. ${dayName(before)} is now on ${label(b)} and locked there.`); break;
+    }
+    case 'unswap': {
+      const swaps = (st.swaps || []).filter((x) => x.a !== date && x.b !== date);
+      const pair = (st.swaps || []).find((x) => x.a === date || x.b === date);
+      if (pair) clearSnaps([pair.a, pair.b]);
+      store.updateSettings({ swaps }); toast('Swap undone.'); break;
+    }
+    case 'mode': {
+      const d = dayOf(date); const modes = { ...(st.modes || {}) };
+      modes[date] = { mode: el.dataset.v, ...(el.dataset.v === 'questions' ? { subj: ui.modeSubj || (d.subjects || [])[0] || 'CARD' } : {}) };
+      const buf = nextBuffer(date); clearSnaps([date, buf].filter(Boolean));
+      store.updateSettings({ modes }); ui.modeSubj = null;
+      toast(el.dataset.v === 'to' ? 'Today is a TO day.' : el.dataset.v === 'light' ? 'Today is a light day.' : 'Questions only today.'); break;
+    }
+    case 'unmode': {
+      const modes = { ...(st.modes || {}) }; const d = dayOf(date); delete modes[date];
+      clearSnaps([date, d && d.displacedTo].filter(Boolean)); store.updateSettings({ modes }); toast('Back to the original plan.'); break;
+    }
     case 'theme': setTheme(effectiveTheme() === 'dark' ? 'light' : 'dark'); break;
     case 'timer': {
       if (ui.timer && ui.timer.key === el.dataset.key) ui.timer = null;
@@ -819,6 +928,7 @@ $app.addEventListener('change', async (ev) => {
   const k = el.dataset.in; if (!k) return; const date = el.dataset.date;
   if (k === 'tier') { const st = settings(); store.updateSettings({ tiers: { ...(st.tiers || {}), [el.dataset.id]: el.value } }); el.blur(); toast(`${short(el.dataset.id)} → ${TIERS[el.value]}`); return; }
   if (k === 'themeset') { setTheme(el.value); return; }
+  if (k === 'modesubj') { ui.modeSubj = el.value; el.blur(); return; }
   if (k === 'anki') { writeDay(date, { anki: intOrNull(el.value) }); el.blur(); }
   else if (k === 'backlog') { writeDay(date, { backlog: intOrNull(el.value) }); el.blur(); }
   else if (k === 'errSubj') ui.errDraft.subj = el.value;

@@ -1,6 +1,6 @@
 // Offline support. Network first (so updates show up straight away), cache as fallback.
 // Bump VERSION whenever you change files.
-const VERSION = 'ukmppd-v7';
+const VERSION = 'ukmppd-v9';
 const SHELL = [
   './', './index.html', './css/styles.css', './js/app.js', './js/schedule.js', './js/stats.js', './js/store.js', './js/config.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
